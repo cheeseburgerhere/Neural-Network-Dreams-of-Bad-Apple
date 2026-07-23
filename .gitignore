@@ -1,0 +1,7 @@
+.vendor/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+prototype_data/source_frames/
+prototype_outputs/
+prototype_runs/
