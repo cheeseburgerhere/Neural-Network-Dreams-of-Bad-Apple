@@ -64,6 +64,54 @@ def _extract(args) -> dict:
     )
 
 
+def _autoregressive_training_config(args):
+    from neural_bad_apple.autoregressive import AutoregressiveTrainingConfig
+
+    return AutoregressiveTrainingConfig(
+        autoencoder_checkpoint=args.autoencoder_checkpoint,
+        frame_dir=args.data_dir,
+        run_dir=args.run_dir,
+        hidden_channels=args.hidden_channels,
+        max_residual_step=args.max_residual_step,
+        sequence_length=args.sequence_length,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        rollout_loss_weight=args.rollout_loss_weight,
+        rollout_warmup_frames=args.rollout_warmup_frames,
+        seed=args.seed,
+        device=args.device,
+    )
+
+
+def _hybrid_training_config(args):
+    from neural_bad_apple.hybrid import HybridTrainingConfig
+
+    return HybridTrainingConfig(
+        autoencoder_checkpoint=args.autoencoder_checkpoint,
+        frame_dir=args.data_dir,
+        run_dir=args.run_dir,
+        history_length=args.history_length,
+        minimum_rollout_steps=args.minimum_rollout_steps,
+        rollout_steps=args.rollout_steps,
+        base_channels=args.base_channels,
+        memory_token_count=args.memory_tokens,
+        fourier_frequencies=args.fourier_frequencies,
+        max_residual_step=args.max_residual_step,
+        memory_temperature=args.memory_temperature,
+        memory_entropy_weight=args.memory_entropy_weight,
+        polarity_loss_weight=args.polarity_loss_weight,
+        canonicalize_polarity=not args.disable_polarity_canonicalization,
+        scene_cut_minimum_distance=args.scene_cut_minimum_distance,
+        latent_noise_standard_deviation=args.latent_noise,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        seed=args.seed,
+        device=args.device,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Neural network dreams Bad Apple — 45–60 second prototype"
@@ -98,6 +146,120 @@ def main() -> None:
     reconstruct_parser.add_argument("--device", default="auto")
     reconstruct_parser.add_argument("--fps", type=float)
     reconstruct_parser.add_argument("--no-video", action="store_true")
+
+    train_ar_parser = subparsers.add_parser(
+        "train-ar",
+        help="train next-latent prediction on the frozen autoencoder",
+    )
+    train_ar_parser.add_argument(
+        "--autoencoder-checkpoint",
+        type=Path,
+        default=Path("prototype_runs/basic_full/model_best.pt"),
+    )
+    train_ar_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("prototype_data/source_frames"),
+    )
+    train_ar_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        default=Path("prototype_runs/autoregressive"),
+    )
+    train_ar_parser.add_argument("--hidden-channels", type=int, default=64)
+    train_ar_parser.add_argument(
+        "--max-residual-step", type=float, default=0.5
+    )
+    train_ar_parser.add_argument("--sequence-length", type=int, default=16)
+    train_ar_parser.add_argument("--epochs", type=int, default=30)
+    train_ar_parser.add_argument("--batch-size", type=int, default=4)
+    train_ar_parser.add_argument("--learning-rate", type=float, default=1e-3)
+    train_ar_parser.add_argument(
+        "--rollout-loss-weight", type=float, default=0.1
+    )
+    train_ar_parser.add_argument(
+        "--rollout-warmup-frames", type=int, default=16
+    )
+    train_ar_parser.add_argument("--seed", type=int, default=7)
+    train_ar_parser.add_argument("--device", default="auto")
+
+    rollout_ar_parser = subparsers.add_parser(
+        "rollout-ar",
+        help="render free-running latent drift from either temporal model",
+    )
+    rollout_ar_parser.add_argument("--checkpoint", type=Path, required=True)
+    rollout_ar_parser.add_argument(
+        "--autoencoder-checkpoint", type=Path
+    )
+    rollout_ar_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("prototype_data/source_frames"),
+    )
+    rollout_ar_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("prototype_outputs/autoregressive"),
+    )
+    rollout_ar_parser.add_argument("--batch-size", type=int, default=8)
+    rollout_ar_parser.add_argument("--device", default="auto")
+    rollout_ar_parser.add_argument("--fps", type=float)
+    rollout_ar_parser.add_argument("--warmup-frames", type=int)
+    rollout_ar_parser.add_argument("--no-video", action="store_true")
+
+    train_hybrid_parser = subparsers.add_parser(
+        "train-hybrid",
+        help="train temporal U-Net with time-addressed scene memory",
+    )
+    train_hybrid_parser.add_argument(
+        "--autoencoder-checkpoint",
+        type=Path,
+        default=Path("prototype_runs/basic_full/model_best.pt"),
+    )
+    train_hybrid_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("prototype_data/source_frames"),
+    )
+    train_hybrid_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        default=Path("prototype_runs/hybrid_memory"),
+    )
+    train_hybrid_parser.add_argument("--history-length", type=int, default=16)
+    train_hybrid_parser.add_argument(
+        "--minimum-rollout-steps", type=int, default=4
+    )
+    train_hybrid_parser.add_argument("--rollout-steps", type=int, default=16)
+    train_hybrid_parser.add_argument("--base-channels", type=int, default=16)
+    train_hybrid_parser.add_argument("--memory-tokens", type=int, default=8)
+    train_hybrid_parser.add_argument(
+        "--fourier-frequencies", type=int, default=6
+    )
+    train_hybrid_parser.add_argument(
+        "--max-residual-step", type=float, default=0.5
+    )
+    train_hybrid_parser.add_argument(
+        "--memory-temperature", type=float, default=0.5
+    )
+    train_hybrid_parser.add_argument(
+        "--memory-entropy-weight", type=float, default=1e-3
+    )
+    train_hybrid_parser.add_argument(
+        "--polarity-loss-weight", type=float, default=0.2
+    )
+    train_hybrid_parser.add_argument(
+        "--scene-cut-minimum-distance", type=int, default=15
+    )
+    train_hybrid_parser.add_argument(
+        "--disable-polarity-canonicalization", action="store_true"
+    )
+    train_hybrid_parser.add_argument("--latent-noise", type=float, default=0.03)
+    train_hybrid_parser.add_argument("--epochs", type=int, default=20)
+    train_hybrid_parser.add_argument("--batch-size", type=int, default=2)
+    train_hybrid_parser.add_argument("--learning-rate", type=float, default=5e-4)
+    train_hybrid_parser.add_argument("--seed", type=int, default=7)
+    train_hybrid_parser.add_argument("--device", default="auto")
 
     all_parser = subparsers.add_parser(
         "all", help="extract, train, and reconstruct one experiment"
@@ -143,6 +305,39 @@ def main() -> None:
             fps=args.fps,
         )
         print(json.dumps(summary, indent=2))
+        return
+
+    if args.command == "train-ar":
+        from neural_bad_apple.autoregressive import train_autoregressor
+
+        checkpoint = train_autoregressor(
+            _autoregressive_training_config(args)
+        )
+        print(f"Best autoregressive checkpoint: {checkpoint.resolve()}")
+        return
+
+    if args.command == "rollout-ar":
+        from neural_bad_apple.drift_rendering import render_drift
+
+        summary = render_drift(
+            checkpoint_path=args.checkpoint,
+            autoencoder_checkpoint_path=args.autoencoder_checkpoint,
+            frame_dir=args.data_dir,
+            output_dir=args.output_dir,
+            batch_size=args.batch_size,
+            device_name=args.device,
+            fps=args.fps,
+            make_videos=not args.no_video,
+            warmup_frames=args.warmup_frames,
+        )
+        print(json.dumps(summary, indent=2))
+        return
+
+    if args.command == "train-hybrid":
+        from neural_bad_apple.hybrid import train_hybrid
+
+        checkpoint = train_hybrid(_hybrid_training_config(args))
+        print(f"Best hybrid checkpoint: {checkpoint.resolve()}")
         return
 
     if args.command == "all":

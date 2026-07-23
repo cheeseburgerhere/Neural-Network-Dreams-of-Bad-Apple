@@ -9,6 +9,10 @@ The pipeline is intentionally made of small, replaceable blocks:
 2. `train` learns either the plain or attention autoencoder.
 3. `reconstruct` saves raw output-neuron probabilities, thresholded black/white
    activations, and (for the attention model) the learned attention maps.
+4. `train-ar` freezes that autoencoder and trains a recurrent next-latent
+   predictor.
+5. `rollout-ar` removes the source after a short context window and visualizes
+   accumulated prediction error.
 
 Every generated pixel is the sigmoid activation of one decoder location. A
 pixel is white when that activation is at least `0.5`, otherwise it is black.
@@ -77,6 +81,97 @@ Attention works, but its same-resolution improvement is only `0.0003` IoU and
 the learned focus maps are diffuse. The plain model is therefore the current
 default. The attention block remains available for future experiments.
 
+## Autoregressive dream
+
+The autoregressive block observes 16 true latent frames (0.5 seconds), then the
+source is cut off. Every later latent is predicted from the previous predicted
+latent and the ConvGRU state. It is never reset during the remaining rollout.
+
+Train the predictor against the frozen full-resolution autoencoder:
+
+```powershell
+python prototype.py train-ar --autoencoder-checkpoint prototype_runs/basic_full/model_best.pt --run-dir prototype_runs/autoregressive_warm16 --epochs 8 --sequence-length 16 --rollout-warmup-frames 16
+```
+
+Render the drift experiment:
+
+```powershell
+python prototype.py rollout-ar --checkpoint prototype_runs/autoregressive_warm16/model_best.pt --output-dir prototype_outputs/autoregressive_drift
+```
+
+The comparison video shows four synchronized panels:
+
+1. Target frame.
+2. Teacher-forced prediction, which receives the correct previous latent.
+3. Free rollout, which only receives its own previous predictions after cutoff.
+4. Error map: red is dreamed white content and cyan is missed white content.
+
+The teacher-forced/free-rollout difference isolates accumulated error from
+ordinary one-step prediction error. In the tested run, teacher-forced binary
+error averaged `3.97%`; free rollout averaged `28.62%`, with a `24.65%`
+accumulation gap. Peak free-rollout error was `60.53%` at frame 337, during a
+major inversion transition.
+
+## Temporal U-Net with learned scene memory
+
+The hybrid predictor keeps the same 16-frame causal context but replaces the
+ConvGRU motion model with a temporal U-Net. Skip concatenations preserve
+short-term motion at high temporal resolution while the bottleneck summarizes
+the full history window. Fourier time features address 12 learned spatial
+memory tokens, and a learned gate fuses remembered scene content with the
+motion forecast.
+
+Train the tested configuration:
+
+```powershell
+python prototype.py train-hybrid --run-dir prototype_runs/hybrid_memory --epochs 12 --base-channels 8 --history-length 16 --rollout-steps 4 --batch-size 4 --memory-tokens 12
+```
+
+Render it through the same diagnostics:
+
+```powershell
+python prototype.py rollout-ar --checkpoint prototype_runs/hybrid_memory/model_best.pt --output-dir prototype_outputs/hybrid_memory
+```
+
+| Free-rollout metric after cutoff | ConvGRU | Hybrid memory | Change |
+| --- | ---: | ---: | ---: |
+| Binary error | 29.66% | **17.32%** | -41.6% |
+| Accumulation gap | 25.75% | **13.36%** | -48.1% |
+| Mean binary IoU | 0.442 | **0.666** | +50.8% |
+| Peak binary error | 60.53% | **51.08%** | -15.6% |
+
+The memory gate averages `0.274` after cutoff and changes its dominant token 35
+times. Memory weights, gate values, and address entropy are included per frame
+in `error_curve.csv`. The hybrid remembers recognizable characters and scene
+structure much longer. The remaining largest failure is the major black/white
+inversion near frame 335.
+
+### Hybrid v2: polarity, scene cuts, and rollout curriculum
+
+Hybrid v2 canonicalizes every training frame to a black background before
+encoding. A separate time-conditioned polarity head restores black/white
+orientation after decoding. Memory tokens are initialized from high-change
+scene frames, addressing uses temperature `0.5` plus entropy regularization,
+and the training rollout expands from 4 to 16 steps.
+
+```powershell
+python prototype.py train-hybrid --run-dir prototype_runs/hybrid_v2 --epochs 12 --base-channels 8 --history-length 16 --minimum-rollout-steps 4 --rollout-steps 16 --batch-size 4 --memory-tokens 12 --memory-temperature 0.5
+python prototype.py rollout-ar --checkpoint prototype_runs/hybrid_v2/model_best.pt --output-dir prototype_outputs/hybrid_v2
+```
+
+| Free-rollout metric after cutoff | ConvGRU | Hybrid v1 | Hybrid v2 |
+| --- | ---: | ---: | ---: |
+| Binary error | 29.66% | 17.32% | **14.19%** |
+| Accumulation gap | 25.75% | 13.36% | **9.04%** |
+| Mean binary IoU | 0.442 | 0.666 | **0.686** |
+| Final-frame error | 31.68% | 25.13% | **15.48%** |
+
+Polarity accuracy reaches `99.1%`. The inversion around frame 337 is corrected:
+free-rollout error there falls from roughly `60%` in v1 to `14.5%` in v2.
+The remaining peak is `77.46%` at frame 380, where polarity is correct but the
+model fails to retrieve the new scene content. Memory address entropy remains
+high (`0.877`), making sharper scene selection the next bottleneck.
+
 ## Outputs
 
 - `prototype_data/manifest.json`: exact source segment and extraction metadata.
@@ -87,6 +182,19 @@ default. The attention block remains available for future experiments.
 - `prototype_outputs/attention/attention_maps.mp4`: learned focus gate.
 - `prototype_outputs/basic_full/binary_activations.mp4`: best tested
   full-resolution reconstruction.
+- `prototype_outputs/autoregressive_drift/comparison.mp4`: synchronized
+  target/control/rollout/error diagnostic.
+- `prototype_outputs/autoregressive_drift/free_rollout.mp4`: uninterrupted
+  autoregressive dream.
+- `prototype_outputs/autoregressive_drift/error_curve.png` and
+  `error_curve.csv`: frame-level accumulation measurements.
+- `prototype_outputs/hybrid_memory/comparison.mp4`: hybrid target/control/
+  rollout/error comparison.
+- `prototype_outputs/hybrid_memory/free_rollout.mp4`: hybrid v1
+  time-conditioned memory rollout.
+- `prototype_outputs/hybrid_v2/comparison.mp4`: v2 synchronized diagnostic.
+- `prototype_outputs/hybrid_v2/free_rollout.mp4`: polarity-canonical,
+  scene-memory rollout.
 
 The current defaults make no style decisions beyond preserving the source
 aspect ratio and using a neutral `0.5` black/white threshold. Temporal effects,

@@ -72,7 +72,7 @@ class PixelActivationAutoencoder(nn.Module):
             ),
         )
 
-    def forward(
+    def encode(
         self, pixels: torch.Tensor
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         height, width = pixels.shape[-2:]
@@ -86,9 +86,21 @@ class PixelActivationAutoencoder(nn.Module):
         if self.attention is not None:
             latent, attention = self.attention(latent)
             extras["attention"] = attention
+        return latent, extras
 
+    def decode(
+        self, latent: torch.Tensor, output_size: tuple[int, int]
+    ) -> torch.Tensor:
         logits = self.decoder(latent)
+        height, width = output_size
         logits = logits[..., :height, :width]
+        return logits
+
+    def forward(
+        self, pixels: torch.Tensor
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        latent, extras = self.encode(pixels)
+        logits = self.decode(latent, pixels.shape[-2:])
         return logits, extras
 
 
