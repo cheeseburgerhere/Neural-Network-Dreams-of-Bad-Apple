@@ -102,6 +102,8 @@ def _hybrid_training_config(args):
         memory_entropy_weight=args.memory_entropy_weight,
         polarity_loss_weight=args.polarity_loss_weight,
         canonicalize_polarity=not args.disable_polarity_canonicalization,
+        polarity_tracking_method=args.polarity_tracking_method,
+        polarity_switch_penalty=args.polarity_switch_penalty,
         scene_cut_minimum_distance=args.scene_cut_minimum_distance,
         latent_noise_standard_deviation=args.latent_noise,
         epochs=args.epochs,
@@ -253,6 +255,14 @@ def main() -> None:
     )
     train_hybrid_parser.add_argument(
         "--disable-polarity-canonicalization", action="store_true"
+    )
+    train_hybrid_parser.add_argument(
+        "--polarity-tracking-method",
+        choices=("temporal", "border"),
+        default="temporal",
+    )
+    train_hybrid_parser.add_argument(
+        "--polarity-switch-penalty", type=float, default=0.05
     )
     train_hybrid_parser.add_argument("--latent-noise", type=float, default=0.03)
     train_hybrid_parser.add_argument("--epochs", type=int, default=20)

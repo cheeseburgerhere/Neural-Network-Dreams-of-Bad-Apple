@@ -272,6 +272,12 @@ def render_drift(
     canonicalize_polarity = checkpoint.get(
         "canonicalize_polarity", False
     )
+    polarity_tracking_method = checkpoint.get(
+        "polarity_tracking_method", "border"
+    )
+    polarity_switch_penalty = checkpoint.get(
+        "polarity_switch_penalty", 0.05
+    )
     if canonicalize_polarity:
         true_raw_latents, source_polarities = encode_canonical_sequence(
             autoencoder,
@@ -279,6 +285,8 @@ def render_drift(
             frame_dir,
             device,
             batch_size=batch_size,
+            polarity_tracking_method=polarity_tracking_method,
+            polarity_switch_penalty=polarity_switch_penalty,
         )
     else:
         true_raw_latents = encode_sequence(
@@ -332,6 +340,11 @@ def render_drift(
             predicted_polarity_probabilities = torch.sigmoid(
                 model.predict_polarity(normalized_times)
             )[:, 0].cpu()
+    rendered_polarities = predicted_polarity_probabilities >= 0.5
+    if canonicalize_polarity:
+        rendered_polarities[:warmup_frames] = (
+            source_polarities[:warmup_frames] >= 0.5
+        )
 
     height, width = checkpoint["image_size"]
     dataset = FrameDataset(
@@ -381,10 +394,9 @@ def render_drift(
                 autoencoder.decode(rollout_raw, (height, width))
             ).cpu()
             if canonicalize_polarity:
-                invert = (
-                    predicted_polarity_probabilities[frame_slice]
-                    >= 0.5
-                )[:, None, None, None]
+                invert = rendered_polarities[frame_slice][
+                    :, None, None, None
+                ]
                 teacher_probability_tensor = torch.where(
                     invert,
                     1.0 - teacher_probability_tensor,
@@ -536,8 +548,11 @@ def render_drift(
         metrics, output_dir / "error_curve.png", warmup_frames
     )
 
-    peak_row = max(metrics, key=lambda row: row["rollout_binary_error"])
     post_cutoff_metrics = metrics[warmup_frames:]
+    peak_row = max(
+        post_cutoff_metrics,
+        key=lambda row: row["rollout_binary_error"],
+    )
     summary = {
         "checkpoint": str(checkpoint_path.resolve()),
         "model_type": model_type,
@@ -548,6 +563,8 @@ def render_drift(
         "source_cutoff_seconds": (warmup_frames - 1) / frame_rate,
         "image_size": [height, width],
         "canonicalize_polarity": canonicalize_polarity,
+        "polarity_tracking_method": polarity_tracking_method,
+        "polarity_switch_penalty": polarity_switch_penalty,
         "mean_teacher_binary_error": float(
             np.mean([row["teacher_binary_error"] for row in metrics])
         ),
@@ -588,6 +605,14 @@ def render_drift(
                 [row["accumulation_gap"] for row in post_cutoff_metrics]
             )
         ),
+        "post_cutoff_mean_rollout_iou": float(
+            np.mean(
+                [
+                    row["rollout_mean_binary_iou"]
+                    for row in post_cutoff_metrics
+                ]
+            )
+        ),
         "error_curve_csv": str(csv_path.resolve()),
         "error_curve_image": str(
             (output_dir / "error_curve.png").resolve()
@@ -610,6 +635,17 @@ def render_drift(
             )
             .float()
             .mean()
+        )
+        summary["target_polarity_switches"] = int(
+            (source_polarities[1:] != source_polarities[:-1]).sum().item()
+        )
+        summary["predicted_polarity_switches"] = int(
+            (
+                predicted_polarities[1:]
+                != predicted_polarities[:-1]
+            )
+            .sum()
+            .item()
         )
 
     if make_videos:

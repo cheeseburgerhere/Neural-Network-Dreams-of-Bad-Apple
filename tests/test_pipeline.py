@@ -19,6 +19,7 @@ from neural_bad_apple.hybrid import (
     detect_frame_polarity,
     rollout_hybrid_latents,
     select_scene_memory_indices,
+    track_frame_polarity,
 )
 
 
@@ -129,6 +130,48 @@ class HybridTests(unittest.TestCase):
                 detect_frame_polarity(frames), torch.tensor([0.0, 1.0])
             )
         )
+
+    def test_temporal_polarity_ignores_border_occlusion(self) -> None:
+        white_background = torch.ones(1, 1, 8, 8)
+        white_background[:, :, 2:6, 2:6] = 0
+        occluded_border = white_background.clone()
+        occluded_border[:, :, 0, :] = 0
+        occluded_border[:, :, -1, :] = 0
+        occluded_border[:, :, :, 0] = 0
+        occluded_border[:, :, :, -1] = 0
+        frames = torch.cat(
+            (white_background, occluded_border, white_background), dim=0
+        )
+
+        self.assertTrue(
+            torch.equal(
+                detect_frame_polarity(frames),
+                torch.tensor([1.0, 0.0, 1.0]),
+            )
+        )
+        self.assertTrue(
+            torch.equal(
+                track_frame_polarity(frames),
+                torch.tensor([1.0, 1.0, 1.0]),
+            )
+        )
+
+    def test_temporal_polarity_tracks_a_real_global_inversion(self) -> None:
+        white_background = torch.ones(1, 1, 8, 8)
+        frames = torch.cat(
+            (white_background, 1.0 - white_background), dim=0
+        )
+        polarities = track_frame_polarity(frames)
+        canonical = torch.where(
+            polarities[:, None, None, None] > 0.5,
+            1.0 - frames,
+            frames,
+        )
+
+        self.assertTrue(
+            torch.equal(polarities, torch.tensor([1.0, 0.0]))
+        )
+        self.assertTrue(torch.equal(canonical[0], canonical[1]))
 
     def test_scene_memories_are_spread_across_large_changes(self) -> None:
         latents = torch.zeros(30, 2, 2, 2)

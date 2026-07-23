@@ -305,6 +305,8 @@ class HybridTrainingConfig:
     memory_entropy_weight: float = 1e-3
     polarity_loss_weight: float = 0.2
     canonicalize_polarity: bool = True
+    polarity_tracking_method: str = "temporal"
+    polarity_switch_penalty: float = 0.05
     scene_cut_minimum_distance: int = 15
     memory_initialization_indices: list[int] = field(default_factory=list)
     latent_noise_standard_deviation: float = 0.03
@@ -333,13 +335,63 @@ def detect_frame_polarity(frames: torch.Tensor) -> torch.Tensor:
     return (border.mean(dim=1) >= 0.5).float()
 
 
+def track_frame_polarity(
+    frames: torch.Tensor,
+    switch_penalty: float = 0.05,
+    initial_polarity: torch.Tensor | float | None = None,
+) -> torch.Tensor:
+    """Choose the temporally smoother orientation of each binary frame.
+
+    The border detector only anchors the first frame. Later frames switch
+    orientation when comparing against the inverse is clearly smoother than
+    keeping the current orientation. The penalty supplies hysteresis around
+    ambiguous cuts.
+    """
+    if frames.ndim != 4 or frames.shape[0] == 0:
+        raise ValueError("frames must be a non-empty TCHW tensor")
+    if switch_penalty < 0:
+        raise ValueError("switch_penalty must be non-negative")
+
+    polarities = torch.empty(
+        len(frames), device=frames.device, dtype=frames.dtype
+    )
+    if initial_polarity is None:
+        polarities[0] = detect_frame_polarity(frames[:1])[0]
+    else:
+        polarities[0] = torch.as_tensor(
+            initial_polarity, device=frames.device, dtype=frames.dtype
+        )
+
+    for frame_index in range(1, len(frames)):
+        previous = frames[frame_index - 1]
+        current = frames[frame_index]
+        same_orientation_error = (current - previous).abs().mean()
+        inverted_orientation_error = (1.0 - current - previous).abs().mean()
+        should_switch = (
+            inverted_orientation_error + switch_penalty
+            < same_orientation_error
+        )
+        polarities[frame_index] = torch.where(
+            should_switch,
+            1.0 - polarities[frame_index - 1],
+            polarities[frame_index - 1],
+        )
+    return polarities
+
+
 def encode_canonical_sequence(
     autoencoder: nn.Module,
     autoencoder_checkpoint: dict,
     frame_dir: Path,
     device: torch.device,
     batch_size: int,
+    polarity_tracking_method: str = "temporal",
+    polarity_switch_penalty: float = 0.05,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    if polarity_tracking_method not in {"border", "temporal"}:
+        raise ValueError(
+            "polarity_tracking_method must be 'border' or 'temporal'"
+        )
     height, width = autoencoder_checkpoint["image_size"]
     dataset = FrameDataset(
         frame_dir,
@@ -356,10 +408,40 @@ def encode_canonical_sequence(
     )
     encoded: list[torch.Tensor] = []
     polarities: list[torch.Tensor] = []
+    previous_tracking_frame: torch.Tensor | None = None
+    previous_polarity: torch.Tensor | None = None
     with torch.inference_mode():
         for frames, _ in loader:
             frames = frames.to(device)
-            polarity = detect_frame_polarity(frames)
+            if polarity_tracking_method == "border":
+                polarity = detect_frame_polarity(frames)
+            else:
+                tracking_frames = F.interpolate(
+                    frames,
+                    size=(min(height, 48), min(width, 64)),
+                    mode="area",
+                ).cpu()
+                if previous_tracking_frame is None:
+                    initial_polarity = detect_frame_polarity(frames[:1])[
+                        0
+                    ].cpu()
+                    polarity = track_frame_polarity(
+                        tracking_frames,
+                        switch_penalty=polarity_switch_penalty,
+                        initial_polarity=initial_polarity,
+                    )
+                else:
+                    tracking_with_context = torch.cat(
+                        (previous_tracking_frame, tracking_frames), dim=0
+                    )
+                    polarity = track_frame_polarity(
+                        tracking_with_context,
+                        switch_penalty=polarity_switch_penalty,
+                        initial_polarity=previous_polarity,
+                    )[1:]
+                previous_tracking_frame = tracking_frames[-1:].clone()
+                previous_polarity = polarity[-1].clone()
+                polarity = polarity.to(device)
             canonical_frames = torch.where(
                 polarity[:, None, None, None] > 0.5,
                 1.0 - frames,
@@ -499,6 +581,8 @@ def _save_checkpoint(
             ],
             "rollout_warmup_frames": config.history_length,
             "canonicalize_polarity": config.canonicalize_polarity,
+            "polarity_tracking_method": config.polarity_tracking_method,
+            "polarity_switch_penalty": config.polarity_switch_penalty,
             "memory_initialization_indices": config.memory_initialization_indices,
             "latent_mean": latent_mean,
             "latent_standard_deviation": latent_standard_deviation,
@@ -519,6 +603,12 @@ def train_hybrid(config: HybridTrainingConfig) -> Path:
         )
     if config.memory_temperature <= 0:
         raise ValueError("memory_temperature must be positive")
+    if config.polarity_tracking_method not in {"border", "temporal"}:
+        raise ValueError(
+            "polarity_tracking_method must be 'border' or 'temporal'"
+        )
+    if config.polarity_switch_penalty < 0:
+        raise ValueError("polarity_switch_penalty must be non-negative")
     _set_seed(config.seed)
     device = resolve_device(config.device)
     config.run_dir.mkdir(parents=True, exist_ok=True)
@@ -534,6 +624,8 @@ def train_hybrid(config: HybridTrainingConfig) -> Path:
             config.frame_dir,
             device,
             batch_size=config.batch_size,
+            polarity_tracking_method=config.polarity_tracking_method,
+            polarity_switch_penalty=config.polarity_switch_penalty,
         )
     else:
         raw_latents = encode_sequence(
@@ -544,6 +636,13 @@ def train_hybrid(config: HybridTrainingConfig) -> Path:
             batch_size=config.batch_size,
         )
         polarities = torch.zeros(len(raw_latents), dtype=torch.float32)
+    polarity_switches = int(
+        (polarities[1:] != polarities[:-1]).sum().item()
+    )
+    print(
+        f"Polarity path: {config.polarity_tracking_method}, "
+        f"{polarity_switches} switches"
+    )
     latents, latent_mean, latent_standard_deviation = normalize_latents(
         raw_latents
     )

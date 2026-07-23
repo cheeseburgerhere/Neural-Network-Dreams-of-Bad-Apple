@@ -172,6 +172,37 @@ The remaining peak is `77.46%` at frame 380, where polarity is correct but the
 model fails to retrieve the new scene content. Memory address entropy remains
 high (`0.877`), making sharper scene selection the next bottleneck.
 
+### Hybrid v3: temporal polarity tracking
+
+The v2 border heuristic becomes unreliable when a large silhouette touches the
+frame edges. Hybrid v3 anchors polarity once, then compares each low-resolution
+frame with both orientations. It only switches when the inverted orientation is
+more temporally consistent by a configurable margin.
+
+```powershell
+python prototype.py train-hybrid --run-dir prototype_runs/hybrid_v3_temporal --epochs 12 --base-channels 8 --history-length 16 --minimum-rollout-steps 4 --rollout-steps 16 --batch-size 4 --memory-tokens 12 --memory-temperature 0.5
+python prototype.py rollout-ar --checkpoint prototype_runs/hybrid_v3_temporal/model_best.pt --output-dir prototype_outputs/hybrid_v3_temporal
+```
+
+The old detector changes polarity eight times. The temporal path changes once,
+at the real global inversion near frame 336. In the problematic frame 356–388
+window, teacher error falls from `22.63%` to `4.66%`, all seven teacher spikes
+above `20%` disappear, and free-rollout error falls from `33.28%` to `15.22%`.
+
+| Post-cutoff metric | Hybrid v2 | Hybrid v3 temporal |
+| --- | ---: | ---: |
+| Teacher binary error | 5.15% | **3.71%** |
+| Free-rollout binary error | 14.19% | **14.10%** |
+| Peak free-rollout error | 77.46% | **33.03%** |
+| Accumulation gap | **9.04%** | 10.38% |
+| Mean binary IoU | 0.675 | **0.690** |
+| Final-frame error | **15.48%** | 17.43% |
+
+The repaired representation removes catastrophic inversions and cuts the worst
+failure substantially. Average long-horizon quality is nearly unchanged,
+showing that scene-content retrieval is now the main limitation rather than
+polarity detection.
+
 ## Outputs
 
 - `prototype_data/manifest.json`: exact source segment and extraction metadata.
@@ -195,6 +226,10 @@ high (`0.877`), making sharper scene selection the next bottleneck.
 - `prototype_outputs/hybrid_v2/comparison.mp4`: v2 synchronized diagnostic.
 - `prototype_outputs/hybrid_v2/free_rollout.mp4`: polarity-canonical,
   scene-memory rollout.
+- `prototype_outputs/hybrid_v3_temporal/comparison.mp4`: temporally tracked
+  polarity diagnostic.
+- `prototype_outputs/hybrid_v3_temporal/free_rollout.mp4`: temporal-polarity
+  autoregressive dream.
 
 The current defaults make no style decisions beyond preserving the source
 aspect ratio and using a neutral `0.5` black/white threshold. Temporal effects,
