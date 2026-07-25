@@ -203,6 +203,77 @@ failure substantially. Average long-horizon quality is nearly unchanged,
 showing that scene-content retrieval is now the main limitation rather than
 polarity detection.
 
+### Hybrid v4: velocity and bleeding scene anchors
+
+Hybrid v4 keeps scene recovery soft so errors bleed into the next character
+instead of causing a clean reset. It adds explicit latent velocity, a supervised
+motion mask, 16 timeline-covering anchors with deterministic top-2 addressing,
+and a spatial anchor gate capped at `35%`. Moving regions suppress the anchor
+gate, while static regions receive a gradual scene-memory correction.
+
+Training uses motion-weighted latent losses and truncated backpropagation,
+expanding from 4 to 32 rollout steps. A final linear calibration exposes the
+polarity head to every timestamp equally; it reaches one predicted switch
+matching the one temporal-polarity target switch.
+
+```powershell
+python prototype.py train-hybrid-v4 --run-dir prototype_runs/hybrid_v4_bleed --epochs 12 --minimum-rollout-steps 4 --rollout-steps 32 --truncated-backprop-steps 4 --base-channels 8 --anchors 16 --batch-size 2 --maximum-anchor-gate 0.35
+python prototype.py rollout-ar --checkpoint prototype_runs/hybrid_v4_bleed/model_best.pt --output-dir prototype_outputs/hybrid_v4_bleed
+```
+
+| Post-cutoff metric | Hybrid v3 temporal | Hybrid v4 bleed |
+| --- | ---: | ---: |
+| Teacher binary error | 3.71% | **3.62%** |
+| Free-rollout binary error | 14.10% | **7.29%** |
+| Accumulation gap | 10.38% | **3.66%** |
+| Mean binary IoU | 0.690 | **0.805** |
+| Peak free-rollout error | 33.03% | **26.76%** |
+| Final-frame error | 17.43% | **14.98%** |
+
+In the hand-and-wing motion interval at frames 240–300, rollout error falls
+from `14.14%` to `7.32%`. Mean frame-to-frame pixel motion rises from `0.34%`
+to `0.70%`, compared with the target's `1.78%`, and the union of pixels that
+participate in motion rises from `14.5%` to `25.5%` versus the target's
+`35.2%`. Motion is therefore no longer frozen, although it remains deliberately
+deformed and temporally damped.
+
+### Hybrid v4.1: dual-scale local motion
+
+V4.1 warm-starts from the v4 checkpoint and splits latent velocity into two
+branches. The slow branch retains the original `0.5` step limit for stable
+whole-shape motion. A new fast branch can contribute up to `2.0` per latent
+cell, but is multiplied by the learned motion mask so it concentrates on
+hands, wings, edges, and other changing regions. The two velocities are added
+before the existing spatial scene-memory bleed.
+
+Fine-tuning is staged to protect the working scene memory: first only the fast
+head and motion mask train, then the temporal U-Net motion path, and finally
+the spatial anchor gate. Timeline anchors, time addressing, and polarity stay
+frozen. The epoch-zero v4 checkpoint is also retained as the fallback if
+fine-tuning regresses.
+
+```powershell
+python prototype.py train-hybrid-v4 --run-dir prototype_runs/hybrid_v4_1_motion --warm-start-checkpoint prototype_runs/hybrid_v4_bleed/model_best.pt --dual-velocity --epochs 8 --minimum-rollout-steps 16 --rollout-steps 32 --truncated-backprop-steps 4 --base-channels 8 --anchors 16 --batch-size 2 --maximum-anchor-gate 0.35 --fast-head-only-epochs 2 --motion-only-epochs 6 --learning-rate 0.0001 --slow-velocity-loss-weight 0.25 --fast-velocity-loss-weight 0.25 --fast-velocity-dynamic-weight 2.0
+python prototype.py rollout-ar --checkpoint prototype_runs/hybrid_v4_1_motion/model_best.pt --output-dir prototype_outputs/hybrid_v4_1_motion
+```
+
+| Post-cutoff metric | Hybrid v4 bleed | Hybrid v4.1 motion |
+| --- | ---: | ---: |
+| Teacher binary error | 3.62% | **3.43%** |
+| Free-rollout binary error | 7.29% | **5.92%** |
+| Accumulation gap | 3.66% | **2.50%** |
+| Mean binary IoU | 0.805 | **0.841** |
+| Peak free-rollout error | 26.76% | **25.73%** |
+| Final-frame error | 14.98% | **12.31%** |
+
+At frames 240-300, mean frame-to-frame motion reaches `0.94%`, up from
+v4's `0.70%` and equal to `53%` of the target's `1.78%`. The moving-pixel
+union reaches `28.4%`, or `81%` of the target's `35.2%`, while interval
+rollout error falls from `7.32%` to `6.29%`. The fast branch is active rather
+than decorative: its post-cutoff mean latent magnitude is `0.0213`, alongside
+`0.0528` from the slow branch. V4.1 preserves the chosen soft bleed; the mean
+effective rollout anchor gate remains `13.2%`.
+
 ## Outputs
 
 - `prototype_data/manifest.json`: exact source segment and extraction metadata.
@@ -229,6 +300,14 @@ polarity detection.
 - `prototype_outputs/hybrid_v3_temporal/comparison.mp4`: temporally tracked
   polarity diagnostic.
 - `prototype_outputs/hybrid_v3_temporal/free_rollout.mp4`: temporal-polarity
+  autoregressive dream.
+- `prototype_outputs/hybrid_v4_bleed/comparison.mp4`: velocity, spatial bleed,
+  and error diagnostic.
+- `prototype_outputs/hybrid_v4_bleed/free_rollout.mp4`: softly bleeding v4
+  autoregressive dream.
+- `prototype_outputs/hybrid_v4_1_motion/comparison.mp4`: dual-scale motion,
+  soft scene-memory bleed, and error diagnostic.
+- `prototype_outputs/hybrid_v4_1_motion/free_rollout.mp4`: v4.1 local-motion
   autoregressive dream.
 
 The current defaults make no style decisions beyond preserving the source

@@ -114,6 +114,52 @@ def _hybrid_training_config(args):
     )
 
 
+def _hybrid_v4_training_config(args):
+    from neural_bad_apple.hybrid_v4 import HybridV4TrainingConfig
+
+    return HybridV4TrainingConfig(
+        autoencoder_checkpoint=args.autoencoder_checkpoint,
+        frame_dir=args.data_dir,
+        run_dir=args.run_dir,
+        history_length=args.history_length,
+        minimum_rollout_steps=args.minimum_rollout_steps,
+        rollout_steps=args.rollout_steps,
+        truncated_backprop_steps=args.truncated_backprop_steps,
+        base_channels=args.base_channels,
+        anchor_count=args.anchors,
+        anchor_temperature=args.anchor_temperature,
+        maximum_anchor_gate=args.maximum_anchor_gate,
+        anchor_minimum_distance=args.anchor_minimum_distance,
+        fourier_frequencies=args.fourier_frequencies,
+        max_velocity_step=args.max_velocity_step,
+        use_dual_velocity=args.dual_velocity,
+        max_fast_velocity_step=args.max_fast_velocity_step,
+        velocity_loss_weight=args.velocity_loss_weight,
+        slow_velocity_loss_weight=args.slow_velocity_loss_weight,
+        fast_velocity_loss_weight=args.fast_velocity_loss_weight,
+        fast_velocity_dynamic_weight=args.fast_velocity_dynamic_weight,
+        dynamic_loss_weight=args.dynamic_loss_weight,
+        motion_mask_loss_weight=args.motion_mask_loss_weight,
+        anchor_loss_weight=args.anchor_loss_weight,
+        polarity_loss_weight=args.polarity_loss_weight,
+        polarity_calibration_steps=args.polarity_calibration_steps,
+        polarity_calibration_learning_rate=(
+            args.polarity_calibration_learning_rate
+        ),
+        polarity_tracking_method=args.polarity_tracking_method,
+        polarity_switch_penalty=args.polarity_switch_penalty,
+        latent_noise_standard_deviation=args.latent_noise,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        warm_start_checkpoint=args.warm_start_checkpoint,
+        fast_head_only_epochs=args.fast_head_only_epochs,
+        motion_only_epochs=args.motion_only_epochs,
+        seed=args.seed,
+        device=args.device,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Neural network dreams Bad Apple — 45–60 second prototype"
@@ -271,6 +317,122 @@ def main() -> None:
     train_hybrid_parser.add_argument("--seed", type=int, default=7)
     train_hybrid_parser.add_argument("--device", default="auto")
 
+    train_hybrid_v4_parser = subparsers.add_parser(
+        "train-hybrid-v4",
+        help="train velocity model with softly bleeding scene anchors",
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--autoencoder-checkpoint",
+        type=Path,
+        default=Path("prototype_runs/basic_full/model_best.pt"),
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("prototype_data/source_frames"),
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        default=Path("prototype_runs/hybrid_v4_bleed"),
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--history-length", type=int, default=16
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--minimum-rollout-steps", type=int, default=4
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--rollout-steps", type=int, default=32
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--truncated-backprop-steps", type=int, default=4
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--base-channels", type=int, default=8
+    )
+    train_hybrid_v4_parser.add_argument("--anchors", type=int, default=16)
+    train_hybrid_v4_parser.add_argument(
+        "--anchor-temperature", type=float, default=0.03
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--maximum-anchor-gate", type=float, default=0.35
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--anchor-minimum-distance", type=int, default=8
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--fourier-frequencies", type=int, default=6
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--max-velocity-step", type=float, default=0.5
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--dual-velocity", action="store_true"
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--max-fast-velocity-step", type=float, default=2.0
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--velocity-loss-weight", type=float, default=0.5
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--slow-velocity-loss-weight", type=float, default=0.5
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--fast-velocity-loss-weight", type=float, default=1.0
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--fast-velocity-dynamic-weight", type=float, default=4.0
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--dynamic-loss-weight", type=float, default=0.5
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--motion-mask-loss-weight", type=float, default=0.05
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--anchor-loss-weight", type=float, default=0.01
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--polarity-loss-weight", type=float, default=0.2
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--polarity-calibration-steps", type=int, default=500
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--polarity-calibration-learning-rate",
+        type=float,
+        default=0.03,
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--polarity-tracking-method",
+        choices=("temporal", "border"),
+        default="temporal",
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--polarity-switch-penalty", type=float, default=0.05
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--latent-noise", type=float, default=0.03
+    )
+    train_hybrid_v4_parser.add_argument("--epochs", type=int, default=12)
+    train_hybrid_v4_parser.add_argument("--batch-size", type=int, default=2)
+    train_hybrid_v4_parser.add_argument(
+        "--learning-rate", type=float, default=5e-4
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--warm-start-checkpoint", type=Path
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--fast-head-only-epochs", type=int, default=0
+    )
+    train_hybrid_v4_parser.add_argument(
+        "--motion-only-epochs", type=int, default=0
+    )
+    train_hybrid_v4_parser.add_argument("--seed", type=int, default=7)
+    train_hybrid_v4_parser.add_argument("--device", default="auto")
+
     all_parser = subparsers.add_parser(
         "all", help="extract, train, and reconstruct one experiment"
     )
@@ -348,6 +510,15 @@ def main() -> None:
 
         checkpoint = train_hybrid(_hybrid_training_config(args))
         print(f"Best hybrid checkpoint: {checkpoint.resolve()}")
+        return
+
+    if args.command == "train-hybrid-v4":
+        from neural_bad_apple.hybrid_v4 import train_hybrid_v4
+
+        checkpoint = train_hybrid_v4(
+            _hybrid_v4_training_config(args)
+        )
+        print(f"Best hybrid v4 checkpoint: {checkpoint.resolve()}")
         return
 
     if args.command == "all":

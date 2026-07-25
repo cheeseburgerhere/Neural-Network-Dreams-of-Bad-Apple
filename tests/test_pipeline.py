@@ -21,6 +21,10 @@ from neural_bad_apple.hybrid import (
     select_scene_memory_indices,
     track_frame_polarity,
 )
+from neural_bad_apple.hybrid_v4 import (
+    BleedingSceneMemoryModel,
+    select_covered_anchor_indices,
+)
 
 
 class ModelTests(unittest.TestCase):
@@ -183,6 +187,121 @@ class HybridTests(unittest.TestCase):
         self.assertEqual(len(indices), 3)
         self.assertIn(10, indices.tolist())
         self.assertIn(20, indices.tolist())
+
+    def test_v4_uses_two_temporally_local_scene_anchors(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+        )
+        _, weights, maximum_gate = model.address_memory(
+            torch.tensor([0.1, 0.9])
+        )
+        self.assertEqual(weights.shape, (2, 4))
+        self.assertTrue(torch.all((weights > 0).sum(dim=1) == 2))
+        self.assertTrue(torch.allclose(weights.sum(dim=1), torch.ones(2)))
+        self.assertTrue(torch.all(maximum_gate <= 0.35))
+
+    def test_v4_velocity_and_bleed_fusion_preserve_latent_grid(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+            maximum_anchor_gate=0.3,
+        )
+        history = torch.rand(2, 8, 8, 2, 2)
+        predicted, extras = model(history, torch.tensor([0.2, 0.8]))
+        self.assertEqual(predicted.shape, (2, 8, 2, 2))
+        self.assertEqual(
+            extras["predicted_velocity"].shape, predicted.shape
+        )
+        self.assertEqual(extras["motion_mask"].shape, (2, 1, 2, 2))
+        self.assertEqual(
+            extras["spatial_memory_gate"].shape, (2, 1, 2, 2)
+        )
+        self.assertTrue(
+            torch.all(extras["spatial_memory_gate"] <= 0.3)
+        )
+
+    def test_v4_dual_velocity_adds_sparse_fast_motion(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+            use_dual_velocity=True,
+            max_fast_velocity_step=2.0,
+        )
+        history = torch.rand(2, 8, 8, 2, 2)
+        _, extras = model(history, torch.tensor([0.2, 0.8]))
+
+        self.assertTrue(
+            torch.allclose(
+                extras["predicted_velocity"],
+                extras["slow_velocity"] + extras["fast_velocity"],
+            )
+        )
+        self.assertTrue(
+            torch.all(
+                extras["fast_velocity"].abs()
+                <= 2.0 * extras["motion_mask"] + 1e-6
+            )
+        )
+
+    def test_v4_checkpoint_can_add_zero_initialized_fast_head(self) -> None:
+        original = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+        )
+        upgraded = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+            use_dual_velocity=True,
+        )
+        missing, unexpected = upgraded.load_state_dict(
+            original.state_dict(), strict=False
+        )
+
+        self.assertEqual(
+            set(missing),
+            {
+                "fast_velocity_head.weight",
+                "fast_velocity_head.bias",
+            },
+        )
+        self.assertEqual(unexpected, [])
+        self.assertTrue(
+            torch.all(upgraded.fast_velocity_head.weight == 0)
+        )
+
+    def test_v4_anchor_selection_preserves_timeline_coverage(self) -> None:
+        latents = torch.zeros(100, 2, 2, 2)
+        latents[30:] = 2.0
+        latents[70:] = -2.0
+        indices = select_covered_anchor_indices(
+            latents, anchor_count=8, minimum_distance=5
+        )
+        gaps = indices[1:] - indices[:-1]
+        self.assertEqual(len(indices), 8)
+        self.assertEqual(indices[0].item(), 0)
+        self.assertEqual(indices[-1].item(), 99)
+        self.assertLessEqual(gaps.max().item(), 33)
 
 
 class DatasetTests(unittest.TestCase):

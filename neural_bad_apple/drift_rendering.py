@@ -21,6 +21,7 @@ from .hybrid import (
     encode_canonical_sequence,
     rollout_hybrid_latents,
 )
+from .hybrid_v4 import BleedingSceneMemoryModel
 from .rendering import _prepare_frame_directory, frames_to_video
 from .training import resolve_device
 
@@ -146,6 +147,59 @@ def _teacher_forced_hybrid_latents(
     return torch.cat(predictions, dim=0)
 
 
+def _hybrid_internal_metrics(
+    model: torch.nn.Module,
+    latents: torch.Tensor,
+    device: torch.device,
+    history_length: int,
+) -> dict[str, np.ndarray]:
+    values = {
+        "effective_memory_gate": np.zeros(len(latents), dtype=np.float32),
+        "motion_mask": np.zeros(len(latents), dtype=np.float32),
+        "predicted_velocity_magnitude": np.zeros(
+            len(latents), dtype=np.float32
+        ),
+        "slow_velocity_magnitude": np.zeros(
+            len(latents), dtype=np.float32
+        ),
+        "fast_velocity_magnitude": np.zeros(
+            len(latents), dtype=np.float32
+        ),
+    }
+    with torch.inference_mode():
+        for target_index in range(history_length, len(latents)):
+            history = latents[
+                target_index - history_length : target_index
+            ].unsqueeze(0).to(device)
+            normalized_time = torch.tensor(
+                [target_index / max(1, len(latents) - 1)],
+                device=device,
+                dtype=history.dtype,
+            )
+            _, extras = model(history, normalized_time)
+            if "spatial_memory_gate" in extras:
+                values["effective_memory_gate"][target_index] = (
+                    extras["spatial_memory_gate"].mean().item()
+                )
+            if "motion_mask" in extras:
+                values["motion_mask"][target_index] = (
+                    extras["motion_mask"].mean().item()
+                )
+            if "predicted_velocity" in extras:
+                values["predicted_velocity_magnitude"][target_index] = (
+                    extras["predicted_velocity"].abs().mean().item()
+                )
+            if "slow_velocity" in extras:
+                values["slow_velocity_magnitude"][target_index] = (
+                    extras["slow_velocity"].abs().mean().item()
+                )
+            if "fast_velocity" in extras:
+                values["fast_velocity_magnitude"][target_index] = (
+                    extras["fast_velocity"].abs().mean().item()
+                )
+    return values
+
+
 def _draw_error_curve(
     metrics: list[dict], output_path: Path, warmup_frames: int
 ) -> None:
@@ -257,6 +311,8 @@ def render_drift(
         model = LatentAutoregressor(**checkpoint["model_kwargs"])
     elif model_type == "hybrid_temporal_memory":
         model = HybridTemporalMemoryModel(**checkpoint["model_kwargs"])
+    elif model_type == "hybrid_v4_bleeding_memory":
+        model = BleedingSceneMemoryModel(**checkpoint["model_kwargs"])
     else:
         raise ValueError(f"Unsupported drift model type: {model_type}")
     model.load_state_dict(checkpoint["state_dict"])
@@ -311,7 +367,11 @@ def render_drift(
         "rollout_warmup_frames", 1
     )
     warmup_frames = min(max(1, warmup_frames), len(true_latents) - 1)
-    if model_type == "hybrid_temporal_memory":
+    hybrid_model_types = {
+        "hybrid_temporal_memory",
+        "hybrid_v4_bleeding_memory",
+    }
+    if model_type in hybrid_model_types:
         warmup_frames = max(4, warmup_frames)
         teacher_latents = _teacher_forced_hybrid_latents(
             model, true_latents, device, warmup_frames
@@ -499,7 +559,7 @@ def render_drift(
         )
 
     memory_summary = None
-    if model_type == "hybrid_temporal_memory":
+    if model_type in hybrid_model_types:
         normalized_times = torch.linspace(
             0.0, 1.0, steps=len(metrics), device=device
         )
@@ -538,6 +598,58 @@ def render_drift(
                 np.count_nonzero(np.diff(dominant_tokens))
             ),
         }
+        if model_type == "hybrid_v4_bleeding_memory":
+            teacher_internal = _hybrid_internal_metrics(
+                model,
+                true_latents,
+                device,
+                warmup_frames,
+            )
+            rollout_internal = _hybrid_internal_metrics(
+                model,
+                rollout_latent_sequence,
+                device,
+                warmup_frames,
+            )
+            for row_index, row in enumerate(metrics):
+                for name, values in teacher_internal.items():
+                    row[f"teacher_{name}"] = float(values[row_index])
+                for name, values in rollout_internal.items():
+                    row[f"rollout_{name}"] = float(values[row_index])
+            memory_summary.update(
+                {
+                    "post_cutoff_teacher_effective_gate": float(
+                        teacher_internal["effective_memory_gate"][
+                            warmup_frames:
+                        ].mean()
+                    ),
+                    "post_cutoff_rollout_effective_gate": float(
+                        rollout_internal["effective_memory_gate"][
+                            warmup_frames:
+                        ].mean()
+                    ),
+                    "post_cutoff_teacher_motion_mask": float(
+                        teacher_internal["motion_mask"][
+                            warmup_frames:
+                        ].mean()
+                    ),
+                    "post_cutoff_rollout_motion_mask": float(
+                        rollout_internal["motion_mask"][
+                            warmup_frames:
+                        ].mean()
+                    ),
+                    "post_cutoff_rollout_slow_velocity": float(
+                        rollout_internal["slow_velocity_magnitude"][
+                            warmup_frames:
+                        ].mean()
+                    ),
+                    "post_cutoff_rollout_fast_velocity": float(
+                        rollout_internal["fast_velocity_magnitude"][
+                            warmup_frames:
+                        ].mean()
+                    ),
+                }
+            )
 
     csv_path = output_dir / "error_curve.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as file:
