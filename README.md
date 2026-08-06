@@ -274,11 +274,108 @@ than decorative: its post-cutoff mean latent magnitude is `0.0213`, alongside
 `0.0528` from the slow branch. V4.1 preserves the chosen soft bleed; the mean
 effective rollout anchor gate remains `13.2%`.
 
+### Hybrid v4.2: long-horizon recovery
+
+The 219.1-second V4.1 run exposed a duration-scaling bug in the experiment
+design rather than a simple GPU-capacity limit. Its normalized Fourier bands
+and fixed anchor temperature represented much wider spans of real time than
+they did in the 15-second prototype. It also learned mainly from clean source
+windows, although rendering asks it to recover from its own corrupted states.
+
+V4.2 keeps the temporal U-Net, dual velocity, polarity tracking, and soft
+memory bleed, then adds:
+
+- Fourier phases measured in physical seconds, with periods from 16 to 0.5
+  seconds at the default six bands.
+- Anchor temperature derived from median anchor spacing.
+- A supervised cut-aware gate that can temporarily raise memory correction
+  from `0.35` to `0.65`, while still interpolating instead of hard-resetting.
+- Random 0-128 frame free-running burn-in before each supervised rollout,
+  mixing clean one-step states with increasingly corrupted states.
+- Frozen memory tokens for the first six epochs.
+
+The full experiment completed 12 epochs in 7.52 hours:
+
+```powershell
+C:\Users\alt_user\miniconda3\envs\torch-gpu\python.exe prototype.py train-hybrid-v42
+```
+
+Validation rollout latent MSE improved from `0.604` to `0.337`, 27.3% below
+V4.1 full. The raw binary render initially appears worse: rollout error is
+`15.26%` because the polarity head predicts 23 switches instead of the three
+targets. When known target polarity is applied to isolate scene content,
+rollout error is `4.93%` versus V4.1 full's `10.16%`, and the accumulation gap
+falls from `7.42%` to `1.72%`.
+
+V4.2 therefore succeeds at long-context content recovery but fails at polarity
+classification. Detailed evidence is in
+`prototype_outputs/hybrid_v4_2_long_horizon/findings_report.html` and the
+adjacent `report.md`.
+
+### V4.2 polarity fix and silhouette diagnosis
+
+A separate 96-knot normalized-time linear spline was fitted while every
+content parameter remained frozen:
+
+```powershell
+python prototype.py fix-polarity
+```
+
+It reaches 100% frame accuracy and exactly three switches. Full raw rollout
+error is now `4.93%`, equal to the earlier true-polarity counterfactual.
+
+The remaining teacher-good/rollout-bad silhouette problem is not fixed by
+amplifying fast velocity or increasing memory bleed. The training objective
+contains a more specific conflict: after self-generated burn-in, the model
+state is predicted, but velocity supervision remains
+`target - true_previous`. Recovery actually requires
+`target - predicted_previous`. In the 53-55 second hand-and-wing interval,
+required recovery velocity is 2.04x the true scene velocity.
+
+An oracle state-error correction confirms causality. Over that interval it
+reduces binary error from `6.93%` to `1.87%` and raises two-pixel boundary F1
+from `0.638` to `0.946`. The oracle is diagnostic only; the next deployable
+experiment is a short motion-path fine-tune using state-relative velocity
+supervision, with the original scene-velocity target kept as a smaller
+auxiliary term. Full measurements live in
+`prototype_runs/hybrid_v4_2_silhouette/report.md`.
+
+### Hybrid v4.3: learned state recovery
+
+V4.3 fine-tunes only 44,121 late motion parameters. Polarity, scene memory,
+time encoding, gates, and most of the temporal backbone remain frozen.
+Training uses atomic five-minute resume checkpoints, a `STOP` sentinel, and a
+runtime limit:
+
+```powershell
+python prototype.py fine-tune-recovery --epochs 2
+```
+
+Epoch 1 is selected. It reduces full rollout latent MSE from `0.33748` to
+`0.32678`, sampled binary error from `5.16%` to `4.75%`, and 53-55 second
+binary error from `6.93%` to `6.48%`. Boundary F1 improves from `0.638` to
+`0.662` in that interval while teacher precision remains effectively
+unchanged. Epoch 2 slightly regresses the important metrics, so training stops
+there and `prototype_runs/hybrid_v4_3_recovery/model_best.pt` retains epoch 1.
+
+## Experiment reports
+
+Important run and render folders contain a small `report.md` explaining the
+question, architecture, exact command, metrics, and interpretation. Training
+V4/V4.1/V4.2 now refreshes its report after every epoch, and `rollout-ar`
+writes a matching render report. JSON config, history, and drift summaries
+remain the machine-readable source of truth.
+
 ## Outputs
 
 - `prototype_data/manifest.json`: exact source segment and extraction metadata.
+- `prototype_data/full_manifest.json`: full 219.1-second extraction metadata.
+- `prototype_runs/<model>/report.md`: human-readable architecture, command,
+  training progress, and experiment notes.
 - `prototype_runs/<model>/history.json`: loss, pixel accuracy, and mean binary
   IoU for comparison.
+- `prototype_outputs/<model>/report.md`: headline drift metrics and
+  interpretation.
 - `prototype_outputs/<model>/probability_activations.mp4`: raw activations.
 - `prototype_outputs/<model>/binary_activations.mp4`: `0/1` neuron view.
 - `prototype_outputs/attention/attention_maps.mp4`: learned focus gate.

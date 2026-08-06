@@ -22,6 +22,7 @@ from .hybrid import (
     rollout_hybrid_latents,
 )
 from .hybrid_v4 import BleedingSceneMemoryModel
+from .reporting import write_render_report
 from .rendering import _prepare_frame_directory, frames_to_video
 from .training import resolve_device
 
@@ -165,6 +166,10 @@ def _hybrid_internal_metrics(
         "fast_velocity_magnitude": np.zeros(
             len(latents), dtype=np.float32
         ),
+        "cut_gate": np.zeros(len(latents), dtype=np.float32),
+        "anchor_disagreement": np.zeros(
+            len(latents), dtype=np.float32
+        ),
     }
     with torch.inference_mode():
         for target_index in range(history_length, len(latents)):
@@ -196,6 +201,14 @@ def _hybrid_internal_metrics(
             if "fast_velocity" in extras:
                 values["fast_velocity_magnitude"][target_index] = (
                     extras["fast_velocity"].abs().mean().item()
+                )
+            if "cut_gate" in extras:
+                values["cut_gate"][target_index] = (
+                    extras["cut_gate"].mean().item()
+                )
+            if "anchor_disagreement" in extras:
+                values["anchor_disagreement"][target_index] = (
+                    extras["anchor_disagreement"].mean().item()
                 )
     return values
 
@@ -648,6 +661,21 @@ def render_drift(
                             warmup_frames:
                         ].mean()
                     ),
+                    "post_cutoff_teacher_cut_gate": float(
+                        teacher_internal["cut_gate"][
+                            warmup_frames:
+                        ].mean()
+                    ),
+                    "post_cutoff_rollout_cut_gate": float(
+                        rollout_internal["cut_gate"][
+                            warmup_frames:
+                        ].mean()
+                    ),
+                    "post_cutoff_rollout_anchor_disagreement": float(
+                        rollout_internal["anchor_disagreement"][
+                            warmup_frames:
+                        ].mean()
+                    ),
                 }
             )
 
@@ -777,5 +805,18 @@ def render_drift(
 
     (output_dir / "drift_summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8"
+    )
+    version = checkpoint.get("architecture_version", "temporal")
+    write_render_report(
+        output_dir,
+        title=f"Neural Network Dreams Bad Apple — Hybrid {version} render",
+        checkpoint=checkpoint_path,
+        summary=summary,
+        notes=(
+            "Teacher-forced output measures one-step reconstruction with "
+            "correct latent history.",
+            "Free rollout measures the actual autoregressive dream and "
+            "therefore includes accumulated state error.",
+        ),
     )
     return summary

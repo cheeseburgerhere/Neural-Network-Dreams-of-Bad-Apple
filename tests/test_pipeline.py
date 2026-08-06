@@ -25,6 +25,16 @@ from neural_bad_apple.hybrid_v4 import (
     BleedingSceneMemoryModel,
     select_covered_anchor_indices,
 )
+from neural_bad_apple.polarity import interpolate_polarity_logits
+from neural_bad_apple.silhouette import VARIANTS, _variant_prediction
+from neural_bad_apple.recovery import (
+    configure_recovery_modules,
+    motion_velocity_target,
+)
+from neural_bad_apple.reporting import (
+    write_render_report,
+    write_training_report,
+)
 
 
 class ModelTests(unittest.TestCase):
@@ -302,6 +312,241 @@ class HybridTests(unittest.TestCase):
         self.assertEqual(indices[0].item(), 0)
         self.assertEqual(indices[-1].item(), 99)
         self.assertLessEqual(gaps.max().item(), 33)
+
+    def test_v42_physical_fourier_features_keep_absolute_period(self) -> None:
+        short = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=3,
+            time_basis="seconds",
+            timeline_seconds=15.0,
+            time_fourier_base_frequency=0.0625,
+        )
+        long = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=3,
+            time_basis="seconds",
+            timeline_seconds=219.0,
+            time_fourier_base_frequency=0.0625,
+        )
+
+        short_features = short._time_features(torch.tensor([1.0 / 15.0]))
+        long_features = long._time_features(torch.tensor([1.0 / 219.0]))
+        self.assertTrue(
+            torch.allclose(
+                short_features[:, 1:],
+                long_features[:, 1:],
+                atol=1e-6,
+            )
+        )
+
+    def test_v42_scales_temperature_to_anchor_spacing(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+            anchor_temperature_mode="spacing",
+            anchor_temperature_ratio=0.5,
+        )
+        latents = torch.rand(100, 8, 2, 2)
+        indices = torch.tensor([0, 20, 60, 99])
+        model.initialize_memory(latents, indices)
+        expected = 0.5 * torch.diff(
+            indices.float() / 99.0
+        ).median().item()
+        self.assertAlmostEqual(model.anchor_temperature, expected)
+
+    def test_v42_cut_gate_preserves_bleed_and_respects_cap(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+            maximum_anchor_gate=0.3,
+            maximum_transition_gate=0.65,
+            use_cut_gate=True,
+        )
+        with torch.no_grad():
+            model.cut_gate_head.bias.fill_(10.0)
+        history = torch.rand(2, 8, 8, 2, 2)
+        _, extras = model(history, torch.tensor([0.2, 0.8]))
+
+        self.assertTrue(
+            torch.all(
+                extras["spatial_memory_gate"]
+                >= extras["base_memory_gate"]
+            )
+        )
+        self.assertTrue(
+            torch.all(extras["spatial_memory_gate"] <= 0.65)
+        )
+        self.assertTrue(torch.all(extras["cut_gate"] > 0.99))
+
+    def test_v42_separate_polarity_spline_interpolates_knots(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+            polarity_knot_count=3,
+        )
+        with torch.no_grad():
+            model.polarity_spline_logits.copy_(
+                torch.tensor([-2.0, 2.0, -2.0])
+            )
+
+        predictions = model.predict_polarity(
+            torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0])
+        )[:, 0]
+
+        self.assertTrue(
+            torch.allclose(
+                predictions, torch.tensor([-2.0, 0.0, 2.0, 0.0, -2.0])
+            )
+        )
+        self.assertTrue(
+            torch.allclose(
+                predictions,
+                interpolate_polarity_logits(
+                    model.polarity_spline_logits,
+                    torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0]),
+                ),
+            )
+        )
+
+    def test_silhouette_baseline_keeps_original_prediction(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+            use_dual_velocity=True,
+            use_cut_gate=True,
+        )
+        history = torch.rand(1, 8, 8, 2, 2)
+        times = torch.tensor([0.5])
+        expected, _ = model(history, times)
+        actual, _ = _variant_prediction(
+            model, history, times, VARIANTS["baseline"]
+        )
+        self.assertTrue(torch.equal(actual, expected))
+
+    def test_moving_bleed_only_adds_bounded_memory_correction(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+            use_dual_velocity=True,
+            use_cut_gate=True,
+            maximum_transition_gate=0.65,
+        )
+        history = torch.rand(1, 8, 8, 2, 2)
+        _, extras = _variant_prediction(
+            model, history, torch.tensor([0.5]), VARIANTS["moving-1.0"]
+        )
+        self.assertTrue(
+            torch.all(
+                extras["diagnostic_gate"]
+                >= extras["spatial_memory_gate"]
+            )
+        )
+        self.assertTrue(torch.all(extras["diagnostic_gate"] <= 0.65))
+
+    def test_recovery_velocity_accounts_for_frozen_memory_fusion(self) -> None:
+        current = torch.rand(2, 8, 2, 2)
+        target = torch.rand(2, 8, 2, 2)
+        memory = torch.rand(2, 8, 2, 2)
+        gate = torch.rand(2, 1, 2, 2) * 0.65
+
+        velocity = motion_velocity_target(
+            current, target, memory, gate
+        )
+        motion = current + velocity
+        reconstructed = motion + gate * (memory - motion)
+
+        self.assertTrue(torch.allclose(reconstructed, target, atol=1e-6))
+
+    def test_recovery_fine_tune_freezes_timeline_and_memory(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=4,
+            fourier_frequencies=2,
+            use_dual_velocity=True,
+            use_cut_gate=True,
+            polarity_knot_count=8,
+        )
+        trainable = configure_recovery_modules(model)
+
+        self.assertGreater(trainable, 0)
+        self.assertFalse(model.memory_tokens.requires_grad)
+        self.assertFalse(model.polarity_spline_logits.requires_grad)
+        self.assertFalse(model.time_encoder[0].weight.requires_grad)
+        self.assertTrue(model.decoder_high[0].weight.requires_grad)
+        self.assertTrue(model.fast_velocity_head.weight.requires_grad)
+
+
+class ReportingTests(unittest.TestCase):
+    def test_training_report_keeps_configuration_and_history(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = write_training_report(
+                Path(directory),
+                title="V4.2 test",
+                status="Prepared",
+                architecture=("Physical time", "Long burn-in"),
+                config={"burn_in_steps": 128},
+                command="python prototype.py train-hybrid-v42",
+                history=[
+                    {
+                        "epoch": 1,
+                        "training_stage": "memory-frozen",
+                        "mean_burn_in_steps": 80,
+                        "active_rollout_steps": 8,
+                        "training_loss": 1.0,
+                        "rollout_mse": 0.5,
+                        "peak_frame_mse": 1.2,
+                        "seconds": 10.0,
+                    }
+                ],
+            )
+            contents = report.read_text(encoding="utf-8")
+            self.assertIn("Physical time", contents)
+            self.assertIn('"burn_in_steps": 128', contents)
+            self.assertIn("memory-frozen", contents)
+
+    def test_metrics_only_render_report_does_not_claim_videos(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = write_render_report(
+                root,
+                title="V4.2 metrics",
+                checkpoint=root / "model_best.pt",
+                summary={"frame_count": 10, "fps": 30.0},
+            )
+            contents = report.read_text(encoding="utf-8")
+            self.assertIn("metrics-only run", contents)
+            self.assertNotIn("`comparison.mp4`", contents)
 
 
 class DatasetTests(unittest.TestCase):

@@ -1,0 +1,362 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "V4.2 Long-Horizon Training Findings",
+    "description": "Technical evaluation of Hybrid V4.2 against the full-timeline V4.1 baseline.",
+    "generatedAt": "2026-07-30T20:43:13+03:00",
+    "cards": [
+      {
+        "id": "corrected_rollout_card",
+        "description": "Free-rollout binary error after applying the known target polarity to isolate scene-content generation.",
+        "dataset": "summary",
+        "sourceId": "analysis_source",
+        "metrics": [
+          {"label": "V4.2 rollout error", "field": "v42_rollout_corrected", "format": "percent"},
+          {"label": "V4.1 full", "field": "v41_rollout", "format": "percent"},
+          {"label": "Relative change", "field": "rollout_change", "format": "percent", "signed": true}
+        ]
+      },
+      {
+        "id": "accumulation_card",
+        "description": "Difference between free-rollout and teacher-forced binary error with polarity held correct.",
+        "dataset": "summary",
+        "sourceId": "analysis_source",
+        "metrics": [
+          {"label": "V4.2 accumulation gap", "field": "v42_gap_corrected", "format": "percent"},
+          {"label": "V4.1 full", "field": "v41_gap", "format": "percent"},
+          {"label": "Relative change", "field": "gap_change", "format": "percent", "signed": true}
+        ]
+      },
+      {
+        "id": "raw_rollout_card",
+        "description": "Actual rendered error using the learned V4.2 polarity head.",
+        "dataset": "summary",
+        "sourceId": "analysis_source",
+        "metrics": [
+          {"label": "Raw V4.2 rollout error", "field": "v42_rollout_raw", "format": "percent"},
+          {"label": "True-polarity result", "field": "v42_rollout_corrected", "format": "percent"}
+        ]
+      },
+      {
+        "id": "polarity_card",
+        "description": "Frame-level accuracy of the learned polarity head across the 219.1-second timeline.",
+        "dataset": "summary",
+        "sourceId": "analysis_source",
+        "metrics": [
+          {"label": "Polarity accuracy", "field": "polarity_accuracy", "format": "percent"},
+          {"label": "Predicted switches", "field": "predicted_switches", "format": "number"},
+          {"label": "Target switches", "field": "target_switches", "format": "number"}
+        ]
+      },
+      {
+        "id": "latent_card",
+        "description": "Mean normalized latent MSE for the full free rollout.",
+        "dataset": "summary",
+        "sourceId": "analysis_source",
+        "metrics": [
+          {"label": "V4.2 rollout latent MSE", "field": "v42_latent_mse", "format": "number"},
+          {"label": "V4.1 full", "field": "v41_latent_mse", "format": "number"},
+          {"label": "Relative change", "field": "latent_change", "format": "percent", "signed": true}
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "interval_error_chart",
+        "title": "Free-rollout binary error by interval",
+        "subtitle": "V4.2 uses the exact true-polarity counterfactual; lower is better.",
+        "type": "bar",
+        "dataset": "interval_comparison",
+        "sourceId": "analysis_source",
+        "valueFormat": "percent",
+        "palette": {"kind": "categorical"},
+        "legend": {"position": "bottom", "interactive": true},
+        "encodings": {
+          "x": {"field": "interval", "type": "nominal", "label": "Video interval"},
+          "y": {"field": "rollout_error", "type": "quantitative", "label": "Binary error"},
+          "color": {"field": "model", "type": "nominal", "label": "Model"},
+          "tooltip": [
+            {"field": "teacher_error", "type": "quantitative", "label": "Teacher error", "format": "percent"},
+            {"field": "latent_mse", "type": "quantitative", "label": "Rollout latent MSE", "format": "number"},
+            {"field": "frame_range", "type": "nominal", "label": "Frames"}
+          ]
+        }
+      },
+      {
+        "id": "training_curve_chart",
+        "title": "Validation rollout latent MSE by epoch",
+        "subtitle": "Twelve full-timeline epochs; rollout curriculum expanded from 4 to 32 frames.",
+        "type": "line",
+        "dataset": "training_epochs",
+        "sourceId": "analysis_source",
+        "valueFormat": "number",
+        "palette": {"kind": "sequential", "name": "blue"},
+        "encodings": {
+          "x": {"field": "epoch", "type": "quantitative", "label": "Epoch"},
+          "y": {"field": "rollout_mse", "type": "quantitative", "label": "Rollout latent MSE"},
+          "tooltip": [
+            {"field": "training_loss", "type": "quantitative", "label": "Training loss", "format": "number"},
+            {"field": "rollout_steps", "type": "quantitative", "label": "Rollout steps", "format": "number"},
+            {"field": "mean_burn_in", "type": "quantitative", "label": "Mean burn-in", "format": "number"},
+            {"field": "seconds", "type": "quantitative", "label": "Epoch seconds", "format": "number"}
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "interval_table",
+        "title": "Interval diagnostics",
+        "subtitle": "Exact V4.1 baseline, raw V4.2, and true-polarity V4.2 measurements.",
+        "dataset": "interval_diagnostics",
+        "sourceId": "analysis_source",
+        "defaultSort": {"field": "interval", "direction": "asc"},
+        "columns": [
+          {"field": "interval", "label": "Interval", "type": "text"},
+          {"field": "frames", "label": "Frames", "type": "text"},
+          {"field": "v41_rollout", "label": "V4.1 rollout", "format": "percent"},
+          {"field": "v42_rollout_raw", "label": "V4.2 raw", "format": "percent"},
+          {"field": "v42_rollout_corrected", "label": "V4.2 true polarity", "format": "percent"},
+          {"field": "v42_teacher_corrected", "label": "V4.2 teacher", "format": "percent"},
+          {"field": "polarity_mismatch", "label": "Polarity mismatch", "format": "percent"},
+          {"field": "v42_latent_mse", "label": "V4.2 latent MSE", "format": "number"}
+        ]
+      },
+      {
+        "id": "polarity_interval_table",
+        "title": "Longest incorrect-polarity intervals",
+        "subtitle": "Contiguous frame ranges where the learned polarity disagreed with the temporal target.",
+        "dataset": "polarity_intervals",
+        "sourceId": "analysis_source",
+        "defaultSort": {"field": "duration_seconds", "direction": "desc"},
+        "columns": [
+          {"field": "start_seconds", "label": "Start, s", "format": "number"},
+          {"field": "end_seconds", "label": "End, s", "format": "number"},
+          {"field": "duration_seconds", "label": "Duration, s", "format": "number"},
+          {"field": "start_frame", "label": "Start frame", "format": "number"},
+          {"field": "end_frame", "label": "End frame", "format": "number"}
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "analysis_source",
+        "label": "Derived V4.2 findings dataset",
+        "path": "prototype_outputs/hybrid_v4_2_long_horizon/analysis.sqlite",
+        "query": {
+          "engine": "sqlite",
+          "sql": "SELECT dataset, row_index, row_json FROM artifact_snapshot ORDER BY dataset, row_index",
+          "description": "Loads the complete reviewed 37-row bounded snapshot used by every report card, chart, and table."
+        }
+      },
+      {
+        "id": "v42_training_source",
+        "label": "V4.2 training history",
+        "path": "prototype_runs/hybrid_v4_2_long_horizon/history.json"
+      },
+      {
+        "id": "v42_drift_source",
+        "label": "V4.2 frame-level drift metrics",
+        "path": "prototype_outputs/hybrid_v4_2_long_horizon/error_curve.csv"
+      },
+      {
+        "id": "v41_drift_source",
+        "label": "V4.1 full-timeline baseline metrics",
+        "path": "prototype_outputs/hybrid_v4_1_full/error_curve.csv"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# V4.2 Long-Horizon Training Findings"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "sourceId": "analysis_source",
+        "body": "## Technical summary\n\n- **The long-horizon content model worked.** With polarity held correct, V4.2 reduced full-video free-rollout binary error from **10.16% to 4.93%**, a 51.5% relative improvement over V4.1 full.\n- **Autoregressive accumulation fell sharply.** The teacher-to-rollout gap dropped from **7.42% to 1.72%**, and normalized rollout latent MSE fell from **0.464 to 0.337**.\n- **The delivered binary render is still worse because polarity failed.** The learned head reached only **88.47%** frame accuracy and predicted **23 switches** for 3 targets, raising raw rollout error to **15.26%**.\n- **Conclusion:** V4.2 substantially fixes long-context collapse in canonical scene content, but its shared physical-time encoder is unsuitable for polarity classification. Repair polarity separately before retraining the expensive motion model."
+      },
+      {
+        "id": "headline_metrics",
+        "type": "metric-strip",
+        "cardIds": [
+          "corrected_rollout_card",
+          "accumulation_card",
+          "raw_rollout_card",
+          "polarity_card",
+          "latent_card"
+        ]
+      },
+      {
+        "id": "content_finding",
+        "type": "markdown",
+        "sourceId": "analysis_source",
+        "body": "## Correct polarity reveals a large reduction in collapse\n\nThe true-polarity counterfactual is exact for binary error: whenever the learned polarity is wrong, inverting every predicted bit changes error from `e` to `1-e`. This isolates the canonical scene-content path without rerunning or retraining the model.\n\nV4.2 improves nearly every long interval. The largest gains occur at **105-120 seconds** (16.14% to 6.18%) and **210 seconds to the end** (22.04% to 6.88%). The only aggregate regression is the first 0-5 seconds, where rollout error rises from 5.21% to 6.17%."
+      },
+      {
+        "id": "interval_error_visual",
+        "type": "chart",
+        "chartId": "interval_error_chart"
+      },
+      {
+        "id": "training_finding",
+        "type": "markdown",
+        "sourceId": "analysis_source",
+        "body": "## Training converged without a collapse event\n\nValidation rollout latent MSE improved in every epoch, from **0.604** to **0.337**, even as supervised rollout length grew from 4 to 32 frames. Total training time was **7.52 hours**, and stderr remained empty. This monotonic curve argues against insufficient GPU memory or optimizer instability as the limiting factor."
+      },
+      {
+        "id": "training_curve_visual",
+        "type": "chart",
+        "chartId": "training_curve_chart"
+      },
+      {
+        "id": "polarity_finding",
+        "type": "markdown",
+        "sourceId": "analysis_source",
+        "body": "## Polarity failure masks the strongest content gains\n\nThe head was wrong for **758 post-cutoff frames**. Its longest failure ran from frame 1,263 to 1,685, or **42.1-56.17 seconds**, covering most of the original 45-60 second prototype. That makes the raw V4.2 output look almost perfectly inverted there: 71.00% raw rollout error becomes 7.12% with correct polarity.\n\nThe 53-55 second hand-and-wing interval is entirely inverted. Raw error is 93.08%, but canonical content error is 6.92%, close to the dedicated 15-second V4.1 result and better than the V4.1 full model's 9.43% on the same frames."
+      },
+      {
+        "id": "polarity_intervals",
+        "type": "table",
+        "tableId": "polarity_interval_table"
+      },
+      {
+        "id": "cut_gate_finding",
+        "type": "markdown",
+        "sourceId": "analysis_source",
+        "body": "## Cut-aware bleed trades one-step precision for rollout recovery\n\nV4.2's rollout effective memory gate averages **22.89%**, versus **9.10%** in V4.1 full. Rollout cut-gate activation averages 14.53%, so transition correction is not limited to a few isolated cuts.\n\nTeacher latent MSE worsens by 27.8%, while rollout latent MSE improves by 27.3%. This is a real stability-versus-local-precision tradeoff: stronger memory correction makes single steps less exact but prevents the free trajectory from leaving the learned manifold. Cut activation correlates with high latent error, but that descriptive correlation does not prove the gate causes the error because difficult frames also trigger the gate."
+      },
+      {
+        "id": "interval_details",
+        "type": "table",
+        "tableId": "interval_table"
+      },
+      {
+        "id": "scope_definitions",
+        "type": "markdown",
+        "body": "## Scope and metric definitions\n\nEvaluation covers all 6,573 frames at 30 FPS and 384x512 output resolution. Source context ends after frame 16. Teacher error uses the correct preceding latent window; free rollout uses only generated latent history after cutoff. Binary error is the fraction of thresholded pixels that differ from the target. Accumulation gap is rollout error minus teacher error. Latent MSE is measured in normalized frozen-autoencoder space.\n\nV4.1 full is the comparison baseline because it uses the same full video and 220-anchor scale. The specialized 45-60 second V4.1 model remains a useful artistic control but had a much larger per-frame optimization budget."
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## Validation method\n\nTraining evidence comes from the saved epoch history and best checkpoint. Render evidence comes from the frame-level drift CSV produced by the unchanged target/teacher/free-rollout evaluator. The polarity sensitivity check uses the identity `error(invert(prediction), target) = 1 - error(prediction, target)` for binary predictions, applied only when predicted and target polarity differ. Segment results use fixed frame ranges on both V4.1 and V4.2."
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## Limitations and robustness checks\n\n- The true-polarity result is a diagnostic counterfactual, not the current end-to-end rendered output.\n- This run changes physical-time features, anchor bandwidth, cut-aware bleed, burn-in exposure, training duration, and learning rate together. It establishes that the package works, not which component carries each gain.\n- Teacher latent error increased, so V4.2 should not be described as uniformly better at reconstruction.\n- The first five seconds regress and contain the corrected peak at frame 358. Random long burn-in under-samples supervised targets near the beginning of the timeline.\n- Correlations involving cut gate, disagreement, and error are descriptive rather than causal."
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "body": "## Recommended next steps\n\n1. **Repair polarity without retraining the motion model.** Give polarity a separate low-frequency normalized-time encoder, then fine-tune only that small branch from the saved V4.2 checkpoint.\n2. **Re-render and use corrected end-to-end metrics as the acceptance test.** Target 3 switches, at least 99.5% polarity accuracy, and raw rollout error close to the current 4.93% counterfactual.\n3. **Fix early-timeline sampling.** Add a deliberate share of zero/short-burn batches or left-pad long-burn windows so frames immediately after cutoff receive direct supervision.\n4. **Then ablate the cut gate.** Compare the saved model with the transition cap forced to the normal 0.35 cap at inference before paying for another full training run."
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## Further questions\n\n- Can a separate polarity branch reach V4.1's perfect three-switch behavior using only checkpoint-side calibration?\n- How much of the 51.5% corrected rollout gain comes from burn-in exposure versus physical-time memory addressing?\n- Is the cut gate too broad, and would a lower transition cap recover teacher precision without reopening collapse?\n- Does corrected V4.2 preserve the desired visible error accumulation and bleed artistically, or has recovery become too strong?"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-30T20:43:13+03:00",
+    "status": "ready",
+    "datasets": {
+      "summary": [
+        {
+          "v42_rollout_corrected": 0.0492885555274897,
+          "v41_rollout": 0.1015541480411857,
+          "rollout_change": -0.5146573874313778,
+          "v42_gap_corrected": 0.0171685671868149,
+          "v41_gap": 0.0742313652044392,
+          "gap_change": -0.7687154595698021,
+          "v42_rollout_raw": 0.15264310803339945,
+          "polarity_accuracy": 0.8846797347068787,
+          "predicted_switches": 23,
+          "target_switches": 3,
+          "v42_latent_mse": 0.337387106642328,
+          "v41_latent_mse": 0.4642164023619371,
+          "latent_change": -0.27321157777773585,
+          "frame_count": 6573,
+          "fps": 30,
+          "cutoff_frame": 16
+        }
+      ],
+      "interval_comparison": [
+        {"order": 1, "interval": "Full post-cutoff", "model": "V4.1 full", "rollout_error": 0.1015541480411857, "teacher_error": 0.027322782836746513, "latent_mse": 0.4642164023619371, "polarity_basis": "learned; 100% accurate", "frame_range": "16-6572"},
+        {"order": 1, "interval": "Full post-cutoff", "model": "V4.2 true polarity", "rollout_error": 0.0492885555274897, "teacher_error": 0.0321199883406748, "latent_mse": 0.337387106642328, "polarity_basis": "target-polarity counterfactual", "frame_range": "16-6572"},
+        {"order": 2, "interval": "0-5 s", "model": "V4.1 full", "rollout_error": 0.05210827120501011, "teacher_error": 0.016999315859666513, "latent_mse": 0.3006212429624353, "polarity_basis": "learned; 100% accurate", "frame_range": "16-149"},
+        {"order": 2, "interval": "0-5 s", "model": "V4.2 true polarity", "rollout_error": 0.061694548497745645, "teacher_error": 0.0205945067144745, "latent_mse": 0.3324418384434113, "polarity_basis": "target-polarity counterfactual", "frame_range": "16-149"},
+        {"order": 3, "interval": "5-15 s", "model": "V4.1 full", "rollout_error": 0.1166961669921875, "teacher_error": 0.018842129177517365, "latent_mse": 0.4393763063599666, "polarity_basis": "learned; 100% accurate", "frame_range": "150-449"},
+        {"order": 3, "interval": "5-15 s", "model": "V4.2 true polarity", "rollout_error": 0.03890082465277778, "teacher_error": 0.0225899420844184, "latent_mse": 0.2663988516991958, "polarity_basis": "target-polarity counterfactual", "frame_range": "150-449"},
+        {"order": 4, "interval": "45-60 s", "model": "V4.1 full", "rollout_error": 0.10891337076822917, "teacher_error": 0.0367483972620081, "latent_mse": 0.589890090988742, "polarity_basis": "learned; 100% accurate", "frame_range": "1350-1799"},
+        {"order": 4, "interval": "45-60 s", "model": "V4.2 true polarity", "rollout_error": 0.07124870017722802, "teacher_error": 0.04088168674045138, "latent_mse": 0.4959084617553486, "polarity_basis": "target-polarity counterfactual", "frame_range": "1350-1799"},
+        {"order": 5, "interval": "105-120 s", "model": "V4.1 full", "rollout_error": 0.16135391800491897, "teacher_error": 0.03464249222366898, "latent_mse": 0.6239645110567411, "polarity_basis": "learned; 100% accurate", "frame_range": "3150-3599"},
+        {"order": 5, "interval": "105-120 s", "model": "V4.2 true polarity", "rollout_error": 0.06175715693721064, "teacher_error": 0.04275407579210069, "latent_mse": 0.37390091452644103, "polarity_basis": "target-polarity counterfactual", "frame_range": "3150-3599"},
+        {"order": 6, "interval": "210 s-end", "model": "V4.1 full", "rollout_error": 0.2203972412407471, "teacher_error": 0.04316374204679868, "latent_mse": 0.6533333454076405, "polarity_basis": "learned; 100% accurate", "frame_range": "6300-6572"},
+        {"order": 6, "interval": "210 s-end", "model": "V4.2 true polarity", "rollout_error": 0.06883508032494849, "teacher_error": 0.05720784579732333, "latent_mse": 0.3799118030604807, "polarity_basis": "target-polarity counterfactual", "frame_range": "6300-6572"}
+      ],
+      "interval_diagnostics": [
+        {"order": 1, "interval": "Full post-cutoff", "frames": "16-6572", "v41_rollout": 0.1015541480411857, "v42_rollout_raw": 0.15264310803339945, "v42_rollout_corrected": 0.0492885555274897, "v42_teacher_corrected": 0.0321199883406748, "polarity_mismatch": 0.11560164709470795, "v42_latent_mse": 0.337387106642328},
+        {"order": 2, "interval": "0-5 s", "frames": "16-149", "v41_rollout": 0.05210827120501011, "v42_rollout_raw": 0.061694548497745645, "v42_rollout_corrected": 0.061694548497745645, "v42_teacher_corrected": 0.0205945067144745, "polarity_mismatch": 0.0, "v42_latent_mse": 0.3324418384434113},
+        {"order": 3, "interval": "5-15 s", "frames": "150-449", "v41_rollout": 0.1166961669921875, "v42_rollout_raw": 0.03890082465277778, "v42_rollout_corrected": 0.03890082465277778, "v42_teacher_corrected": 0.0225899420844184, "polarity_mismatch": 0.0, "v42_latent_mse": 0.2663988516991958},
+        {"order": 4, "interval": "45-60 s", "frames": "1350-1799", "v41_rollout": 0.10891337076822917, "v42_rollout_raw": 0.7100368358470776, "v42_rollout_corrected": 0.07124870017722802, "v42_teacher_corrected": 0.04088168674045138, "polarity_mismatch": 0.7466666666666667, "v42_latent_mse": 0.4959084617553486},
+        {"order": 5, "interval": "53-55 s hands/wings", "frames": "1590-1649", "v41_rollout": 0.09426133897569446, "v42_rollout_raw": 0.9307707044813368, "v42_rollout_corrected": 0.0692292955186632, "v42_teacher_corrected": 0.0218916998969184, "polarity_mismatch": 1.0, "v42_latent_mse": 0.5750488768952589},
+        {"order": 6, "interval": "105-120 s", "frames": "3150-3599", "v41_rollout": 0.16135391800491897, "v42_rollout_raw": 0.06175715693721064, "v42_rollout_corrected": 0.06175715693721064, "v42_teacher_corrected": 0.04275407579210069, "polarity_mismatch": 0.0, "v42_latent_mse": 0.37390091452644103},
+        {"order": 7, "interval": "210 s-end", "frames": "6300-6572", "v41_rollout": 0.2203972412407471, "v42_rollout_raw": 0.06883508032494849, "v42_rollout_corrected": 0.06883508032494849, "v42_teacher_corrected": 0.05720784579732333, "polarity_mismatch": 0.0, "v42_latent_mse": 0.3799118030604807}
+      ],
+      "training_epochs": [
+        {"epoch": 1, "rollout_steps": 4, "mean_burn_in": 63.307, "training_loss": 1.874571, "rollout_mse": 0.603592, "polarity_accuracy": 0.868097, "effective_gate": 0.135946, "cut_gate_loss": 0.169937, "seconds": 1488.9},
+        {"epoch": 2, "rollout_steps": 7, "mean_burn_in": 63.674, "training_loss": 1.729391, "rollout_mse": 0.562032, "polarity_accuracy": 0.868097, "effective_gate": 0.151633, "cut_gate_loss": 0.159118, "seconds": 1602.0},
+        {"epoch": 3, "rollout_steps": 9, "mean_burn_in": 63.789, "training_loss": 1.670833, "rollout_mse": 0.530509, "polarity_accuracy": 0.869466, "effective_gate": 0.163446, "cut_gate_loss": 0.158110, "seconds": 2008.0},
+        {"epoch": 4, "rollout_steps": 12, "mean_burn_in": 64.894, "training_loss": 1.604543, "rollout_mse": 0.509577, "polarity_accuracy": 0.887418, "effective_gate": 0.192482, "cut_gate_loss": 0.149894, "seconds": 1902.9},
+        {"epoch": 5, "rollout_steps": 14, "mean_burn_in": 64.663, "training_loss": 1.561807, "rollout_mse": 0.502281, "polarity_accuracy": 0.894721, "effective_gate": 0.212460, "cut_gate_loss": 0.146121, "seconds": 1935.8},
+        {"epoch": 6, "rollout_steps": 17, "mean_burn_in": 64.580, "training_loss": 1.523537, "rollout_mse": 0.486394, "polarity_accuracy": 0.897003, "effective_gate": 0.214643, "cut_gate_loss": 0.144135, "seconds": 2029.0},
+        {"epoch": 7, "rollout_steps": 19, "mean_burn_in": 63.856, "training_loss": 1.474021, "rollout_mse": 0.442811, "polarity_accuracy": 0.891678, "effective_gate": 0.216206, "cut_gate_loss": 0.138887, "seconds": 2161.0},
+        {"epoch": 8, "rollout_steps": 22, "mean_burn_in": 63.905, "training_loss": 1.415197, "rollout_mse": 0.421580, "polarity_accuracy": 0.900806, "effective_gate": 0.223050, "cut_gate_loss": 0.135379, "seconds": 2426.9},
+        {"epoch": 9, "rollout_steps": 24, "mean_burn_in": 63.874, "training_loss": 1.361555, "rollout_mse": 0.394353, "polarity_accuracy": 0.891526, "effective_gate": 0.228927, "cut_gate_loss": 0.133210, "seconds": 3915.2},
+        {"epoch": 10, "rollout_steps": 27, "mean_burn_in": 63.480, "training_loss": 1.309443, "rollout_mse": 0.372906, "polarity_accuracy": 0.898372, "effective_gate": 0.232840, "cut_gate_loss": 0.127922, "seconds": 2736.0},
+        {"epoch": 11, "rollout_steps": 29, "mean_burn_in": 65.016, "training_loss": 1.273045, "rollout_mse": 0.361736, "polarity_accuracy": 0.897459, "effective_gate": 0.236924, "cut_gate_loss": 0.126603, "seconds": 2432.2},
+        {"epoch": 12, "rollout_steps": 32, "mean_burn_in": 63.934, "training_loss": 1.215874, "rollout_mse": 0.337478, "polarity_accuracy": 0.897611, "effective_gate": 0.238467, "cut_gate_loss": 0.117571, "seconds": 2450.0}
+      ],
+      "polarity_intervals": [
+        {"start_frame": 1263, "end_frame": 1685, "start_seconds": 42.1, "end_seconds": 56.1667, "duration_seconds": 14.1},
+        {"start_frame": 785, "end_frame": 918, "start_seconds": 26.1667, "end_seconds": 30.6, "duration_seconds": 4.4667},
+        {"start_frame": 612, "end_frame": 697, "start_seconds": 20.4, "end_seconds": 23.2333, "duration_seconds": 2.8667},
+        {"start_frame": 537, "end_frame": 569, "start_seconds": 17.9, "end_seconds": 18.9667, "duration_seconds": 1.1},
+        {"start_frame": 590, "end_frame": 609, "start_seconds": 19.6667, "end_seconds": 20.3, "duration_seconds": 0.6667}
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "analysis_source",
+      "label": "Derived V4.2 findings dataset",
+      "path": "prototype_outputs/hybrid_v4_2_long_horizon/analysis.sqlite",
+      "query": {
+        "engine": "sqlite",
+        "sql": "SELECT dataset, row_index, row_json FROM artifact_snapshot ORDER BY dataset, row_index",
+        "description": "Loads the complete reviewed 37-row bounded snapshot used by every report card, chart, and table."
+      }
+    },
+    {
+      "id": "v42_training_source",
+      "label": "V4.2 training history",
+      "path": "prototype_runs/hybrid_v4_2_long_horizon/history.json"
+    },
+    {
+      "id": "v42_drift_source",
+      "label": "V4.2 frame-level drift metrics",
+      "path": "prototype_outputs/hybrid_v4_2_long_horizon/error_curve.csv"
+    },
+    {
+      "id": "v41_drift_source",
+      "label": "V4.1 full-timeline baseline metrics",
+      "path": "prototype_outputs/hybrid_v4_1_full/error_curve.csv"
+    }
+  ]
+}

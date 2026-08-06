@@ -5,3 +5,20 @@ __pycache__/
 prototype_data/source_frames/
 prototype_outputs/
 prototype_runs/
+prototype_data/full_source_frames/
+
+# Keep the lightweight experiment narratives while ignoring large artifacts.
+!prototype_runs/
+prototype_runs/**
+!prototype_runs/**/
+!prototype_runs/**/report.md
+!prototype_runs/report.md
+!prototype_outputs/
+prototype_outputs/**
+!prototype_outputs/**/
+!prototype_outputs/**/report.md
+!prototype_outputs/**/analysis.json
+!prototype_outputs/**/analysis.sqlite
+!prototype_outputs/**/artifact.json
+!prototype_outputs/**/findings_report.html
+!prototype_outputs/report.md
