@@ -2,6 +2,12 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# The original video is user-supplied and must not be redistributed.
+/*.mp4
+
+# Derived latent tensors are reproducible but far too large for Git.
+prototype_data/cache/*.pt
 prototype_data/source_frames/
 prototype_outputs/
 prototype_runs/
