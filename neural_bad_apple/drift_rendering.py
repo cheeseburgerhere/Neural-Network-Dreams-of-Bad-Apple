@@ -582,12 +582,16 @@ def render_drift(
             )
         memory_weights_array = memory_weights.cpu().numpy()
         memory_gates_array = memory_gates[:, 0].cpu().numpy()
-        entropies = -np.sum(
-            memory_weights_array
-            * np.log(np.clip(memory_weights_array, 1e-8, 1.0)),
-            axis=1,
-        ) / np.log(memory_weights_array.shape[1])
-        dominant_tokens = memory_weights_array.argmax(axis=1)
+        if memory_weights_array.shape[1]:
+            entropies = -np.sum(
+                memory_weights_array
+                * np.log(np.clip(memory_weights_array, 1e-8, 1.0)),
+                axis=1,
+            ) / np.log(memory_weights_array.shape[1])
+            dominant_tokens = memory_weights_array.argmax(axis=1)
+        else:
+            entropies = np.zeros(len(metrics), dtype=np.float32)
+            dominant_tokens = np.full(len(metrics), -1, dtype=np.int64)
         for row_index, row in enumerate(metrics):
             row["memory_gate"] = float(memory_gates_array[row_index])
             row["memory_entropy"] = float(entropies[row_index])

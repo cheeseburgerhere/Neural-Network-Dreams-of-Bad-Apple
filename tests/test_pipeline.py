@@ -215,6 +215,28 @@ class HybridTests(unittest.TestCase):
         self.assertTrue(torch.allclose(weights.sum(dim=1), torch.ones(2)))
         self.assertTrue(torch.all(maximum_gate <= 0.35))
 
+    def test_v4_zero_anchor_control_disables_memory(self) -> None:
+        model = BleedingSceneMemoryModel(
+            latent_channels=8,
+            latent_height=2,
+            latent_width=2,
+            base_channels=4,
+            anchor_count=0,
+            fourier_frequencies=2,
+            use_dual_velocity=True,
+            use_cut_gate=True,
+            maximum_transition_gate=0.65,
+        )
+        history = torch.rand(2, 8, 8, 2, 2)
+        predicted, extras = model(history, torch.tensor([0.2, 0.8]))
+
+        self.assertEqual(extras["memory_weights"].shape, (2, 0))
+        self.assertTrue(torch.equal(predicted, extras["motion_candidate"]))
+        self.assertTrue(torch.count_nonzero(extras["memory_gate"]) == 0)
+        self.assertTrue(
+            torch.count_nonzero(extras["spatial_memory_gate"]) == 0
+        )
+
     def test_v4_velocity_and_bleed_fusion_preserve_latent_grid(self) -> None:
         model = BleedingSceneMemoryModel(
             latent_channels=8,

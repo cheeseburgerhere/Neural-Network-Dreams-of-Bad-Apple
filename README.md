@@ -358,6 +358,15 @@ binary error from `6.93%` to `6.48%`. Boundary F1 improves from `0.638` to
 unchanged. Epoch 2 slightly regresses the important metrics, so training stops
 there and `prototype_runs/hybrid_v4_3_recovery/model_best.pt` retains epoch 1.
 
+### Prepared anchor-budget ablation
+
+The next experiment isolates the cost of explicit scene memory with
+`0`, `16`, `32`, `55`, `110`, and `220` anchors while keeping the V4.2
+controller and training settings fixed. The zero-anchor variant is a real
+memory-disabled control. Training is intentionally not started yet; commands,
+parameter counts, evaluation order, and per-variant logs are in
+`prototype_runs/anchor_budget_ablation/report.md`.
+
 ## Experiment reports
 
 Important run and render folders contain a small `report.md` explaining the

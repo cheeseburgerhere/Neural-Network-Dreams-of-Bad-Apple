@@ -55,6 +55,8 @@ class BleedingSceneMemoryModel(nn.Module):
             raise ValueError(
                 "anchor_temperature_mode must be 'fixed' or 'spacing'"
             )
+        if anchor_count < 0 or anchor_count == 1:
+            raise ValueError("anchor_count must be zero or at least two")
         if time_basis not in {"normalized", "seconds"}:
             raise ValueError(
                 "time_basis must be 'normalized' or 'seconds'"
@@ -212,6 +214,8 @@ class BleedingSceneMemoryModel(nn.Module):
     ) -> None:
         if len(indices) != self.anchor_count:
             raise ValueError("One initialization index is required per anchor")
+        if self.anchor_count == 0:
+            return
         indices = indices.to(normalized_latents.device)
         values = normalized_latents[indices]
         with torch.no_grad():
@@ -232,6 +236,23 @@ class BleedingSceneMemoryModel(nn.Module):
         time_state = self.time_encoder(
             self._time_features(normalized_time)
         )
+        if self.anchor_count == 0:
+            batch_size = normalized_time.numel()
+            return (
+                time_state,
+                torch.zeros(
+                    batch_size,
+                    0,
+                    device=normalized_time.device,
+                    dtype=normalized_time.dtype,
+                ),
+                torch.zeros(
+                    batch_size,
+                    1,
+                    device=normalized_time.device,
+                    dtype=normalized_time.dtype,
+                ),
+            )
         distances = (
             normalized_time.reshape(-1, 1)
             - self.anchor_times.reshape(1, -1)
@@ -354,36 +375,47 @@ class BleedingSceneMemoryModel(nn.Module):
             )
         predicted_velocity = slow_velocity + fast_velocity
         motion_candidate = latent_history[:, -1] + predicted_velocity
-        memory_candidate = torch.einsum(
-            "bm,mchw->bchw", memory_weights, self.memory_tokens
-        )
-        spatial_gate = torch.sigmoid(
-            self.spatial_anchor_gate_head(final_features)
-            + self.time_to_anchor_gate(time_state)[:, :, None, None]
-        )
-        base_effective_gate = (
-            self.maximum_anchor_gate
-            * spatial_gate
-            * (1.0 - motion_mask)
-        )
-        anchor_disagreement = (
-            memory_candidate - motion_candidate
-        ).abs().mean(dim=1, keepdim=True)
-        if self.cut_gate_head is None:
+        if self.anchor_count == 0:
+            memory_candidate = torch.zeros_like(motion_candidate)
+            base_effective_gate = torch.zeros_like(motion_mask)
+            anchor_disagreement = torch.zeros_like(motion_mask)
             cut_gate = torch.zeros_like(base_effective_gate)
-            effective_gate = base_effective_gate
+            effective_gate = torch.zeros_like(base_effective_gate)
         else:
-            cut_gate = torch.sigmoid(
-                self.cut_gate_head(
-                    torch.cat((final_features, anchor_disagreement), dim=1)
+            memory_candidate = torch.einsum(
+                "bm,mchw->bchw", memory_weights, self.memory_tokens
+            )
+            spatial_gate = torch.sigmoid(
+                self.spatial_anchor_gate_head(final_features)
+                + self.time_to_anchor_gate(time_state)[:, :, None, None]
+            )
+            base_effective_gate = (
+                self.maximum_anchor_gate
+                * spatial_gate
+                * (1.0 - motion_mask)
+            )
+            anchor_disagreement = (
+                memory_candidate - motion_candidate
+            ).abs().mean(dim=1, keepdim=True)
+            if self.cut_gate_head is None:
+                cut_gate = torch.zeros_like(base_effective_gate)
+                effective_gate = base_effective_gate
+            else:
+                cut_gate = torch.sigmoid(
+                    self.cut_gate_head(
+                        torch.cat(
+                            (final_features, anchor_disagreement), dim=1
+                        )
+                    )
                 )
-            )
-            transition_strength = cut_gate * (
-                1.0 - 0.5 * motion_mask
-            )
-            effective_gate = base_effective_gate + transition_strength * (
-                self.maximum_transition_gate - base_effective_gate
-            )
+                transition_strength = cut_gate * (
+                    1.0 - 0.5 * motion_mask
+                )
+                effective_gate = (
+                    base_effective_gate
+                    + transition_strength
+                    * (self.maximum_transition_gate - base_effective_gate)
+                )
         next_latent = motion_candidate + effective_gate * (
             memory_candidate - motion_candidate
         )
@@ -412,8 +444,10 @@ def select_covered_anchor_indices(
     minimum_distance: int,
 ) -> torch.Tensor:
     """Mix uniform coverage with high-change anchors."""
+    if anchor_count == 0:
+        return torch.empty(0, dtype=torch.long)
     if anchor_count < 2:
-        raise ValueError("anchor_count must be at least two")
+        raise ValueError("anchor_count must be zero or at least two")
     if anchor_count > len(normalized_latents):
         raise ValueError("anchor_count cannot exceed the frame count")
 
@@ -660,12 +694,19 @@ def _architecture_notes(
     config: HybridV4TrainingConfig,
     model: BleedingSceneMemoryModel,
 ) -> list[str]:
+    memory_note = (
+        "Scene memory is disabled for the zero-anchor control."
+        if model.anchor_count == 0
+        else (
+            f"{model.anchor_count} time-local scene memories bleed into the "
+            f"motion candidate with a normal cap of "
+            f"{model.maximum_anchor_gate:.2f}."
+        )
+    )
     notes = [
         "A causal temporal U-Net predicts slow and fast latent velocity "
         "from the previous latent window.",
-        f"{model.anchor_count} time-local scene memories bleed into the "
-        f"motion candidate with a normal cap of "
-        f"{model.maximum_anchor_gate:.2f}.",
+        memory_note,
         f"Time features use the `{model.time_basis}` basis across "
         f"{model.timeline_seconds:.2f} seconds.",
         f"Anchor temperature is `{model.anchor_temperature_mode}` and "
@@ -961,9 +1002,14 @@ def train_hybrid_v4(config: HybridV4TrainingConfig) -> Path:
                 train_spatial_gate=train_spatial_gate,
             )
         else:
-            freeze_memory = epoch <= config.freeze_memory_epochs
+            freeze_memory = (
+                model.anchor_count > 0
+                and epoch <= config.freeze_memory_epochs
+            )
             model.memory_tokens.requires_grad_(not freeze_memory)
-            if freeze_memory:
+            if model.anchor_count == 0:
+                training_stage = "memory-disabled"
+            elif freeze_memory:
                 training_stage = "memory-frozen"
             trainable_parameter_count = sum(
                 parameter.numel()
@@ -1181,8 +1227,10 @@ def train_hybrid_v4(config: HybridV4TrainingConfig) -> Path:
                     block_loss = None
                     latent_history = latent_history.detach()
 
-            anchor_loss = F.mse_loss(
-                model.memory_tokens, model.anchor_reference
+            anchor_loss = (
+                F.mse_loss(model.memory_tokens, model.anchor_reference)
+                if model.anchor_count
+                else torch.zeros((), device=device)
             )
             if (
                 config.anchor_loss_weight
