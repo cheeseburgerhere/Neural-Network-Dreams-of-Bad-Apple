@@ -36,11 +36,11 @@ V4.2 content dynamics.
 
 ## Artifacts
 
-- Checkpoint: `D:\Code_archive\Bad_apple\prototype_runs\hybrid_v4_2_polarity_fix\model_best.pt`
-- Metrics: `D:\Code_archive\Bad_apple\prototype_runs\hybrid_v4_2_polarity_fix\calibration.json`
-- Full render metrics: `D:\Code_archive\Bad_apple\prototype_outputs\hybrid_v4_2_polarity_fix\drift_summary.json`
-- Source checkpoint: `D:\Code_archive\Bad_apple\prototype_runs\hybrid_v4_2_long_horizon\model_best.pt`
-- Polarity targets: `D:\Code_archive\Bad_apple\prototype_outputs\hybrid_v4_2_long_horizon\error_curve.csv`
+- Checkpoint: `C:\Users\cheeseburgerhere\OneDrive\Belgeler\GitHub\Neural-Network-Dreams-of-Bad-Apple\prototype_runs\hybrid_v4_2_polarity_fix\model_best.pt`
+- Metrics: `C:\Users\cheeseburgerhere\OneDrive\Belgeler\GitHub\Neural-Network-Dreams-of-Bad-Apple\prototype_runs\hybrid_v4_2_polarity_fix\calibration.json`
+- Full render metrics: `C:\Users\cheeseburgerhere\OneDrive\Belgeler\GitHub\Neural-Network-Dreams-of-Bad-Apple\prototype_outputs\hybrid_v4_2_polarity_fix\drift_summary.json`
+- Source checkpoint: `C:\Users\cheeseburgerhere\OneDrive\Belgeler\GitHub\Neural-Network-Dreams-of-Bad-Apple\prototype_runs\hybrid_v4_2_long_horizon\model_best.pt`
+- Polarity targets: `C:\Users\cheeseburgerhere\OneDrive\Belgeler\GitHub\Neural-Network-Dreams-of-Bad-Apple\prototype_outputs\hybrid_v4_2_long_horizon\error_curve.csv`
 
 ## Reproduction
 

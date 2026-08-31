@@ -21,7 +21,7 @@ Correct the teacher-good/rollout-bad objective mismatch without retraining scene
 - Hard shutdown loses at most one checkpoint interval.
 
 ```powershell
-New-Item "D:\Code_archive\Bad_apple\prototype_runs\hybrid_v4_3_recovery_smoke\STOP" -ItemType File
+New-Item "C:\Users\cheeseburgerhere\OneDrive\Belgeler\GitHub\Neural-Network-Dreams-of-Bad-Apple\prototype_runs\hybrid_v4_3_recovery_smoke\STOP" -ItemType File
 ```
 
 Remove `STOP`, then rerun the same command to resume.
@@ -30,9 +30,9 @@ Remove `STOP`, then rerun the same command to resume.
 
 ```json
 {
-  "checkpoint": "D:\\Code_archive\\Bad_apple\\prototype_runs\\hybrid_v4_2_polarity_fix\\model_best.pt",
-  "latent_cache": "D:\\Code_archive\\Bad_apple\\prototype_data\\cache\\v4_2_canonical_latents_fp16.pt",
-  "run_dir": "D:\\Code_archive\\Bad_apple\\prototype_runs\\hybrid_v4_3_recovery_smoke",
+  "checkpoint": "C:\\Users\\cheeseburgerhere\\OneDrive\\Belgeler\\GitHub\\Neural-Network-Dreams-of-Bad-Apple\\prototype_runs\\hybrid_v4_2_polarity_fix\\model_best.pt",
+  "latent_cache": "C:\\Users\\cheeseburgerhere\\OneDrive\\Belgeler\\GitHub\\Neural-Network-Dreams-of-Bad-Apple\\prototype_data\\cache\\v4_2_canonical_latents_fp16.pt",
+  "run_dir": "C:\\Users\\cheeseburgerhere\\OneDrive\\Belgeler\\GitHub\\Neural-Network-Dreams-of-Bad-Apple\\prototype_runs\\hybrid_v4_3_recovery_smoke",
   "epochs": 1,
   "history_length": 16,
   "rollout_steps": 4,

@@ -1,6 +1,6 @@
 # Neural Network Dreams Bad Apple — Hybrid v4.3-state-recovery render
 
-**Checkpoint:** `D:\Code_archive\Bad_apple\prototype_runs\hybrid_v4_3_recovery\model_best.pt`
+**Checkpoint:** `C:\Users\cheeseburgerhere\OneDrive\Belgeler\GitHub\Neural-Network-Dreams-of-Bad-Apple\prototype_runs\hybrid_v4_3_recovery\model_best.pt`
 
 ## What is in this folder
 

@@ -1,6 +1,6 @@
 {
   "project": "Neural network dreams Bad Apple",
-  "source_video": "D:\\Code_archive\\Bad_apple\\\u3010\u6771\u65b9\u3011Bad Apple!! \uff30\uff36\u3010\u5f71\u7d75\u3011.mp4",
+  "source_video": "C:\\Users\\cheeseburgerhere\\OneDrive\\Belgeler\\GitHub\\Neural-Network-Dreams-of-Bad-Apple\\\u3010\u6771\u65b9\u3011Bad Apple!! \uff30\uff36\u3010\u5f71\u7d75\u3011.mp4",
   "source_metadata": {
     "ffmpeg_version": "7.1-essentials_build-www.gyan.dev built with gcc 14.2.0 (Rev1, Built by MSYS2 project)",
     "codec": "h264",
@@ -24,7 +24,7 @@
     "duration_seconds": 15.0
   },
   "frames": {
-    "directory": "D:\\Code_archive\\Bad_apple\\prototype_data\\source_frames",
+    "directory": "C:\\Users\\cheeseburgerhere\\OneDrive\\Belgeler\\GitHub\\Neural-Network-Dreams-of-Bad-Apple\\prototype_data\\source_frames",
     "pattern": "frame_%05d.png",
     "count": 450,
     "fps": 30.0,

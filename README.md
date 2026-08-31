@@ -297,7 +297,7 @@ memory bleed, then adds:
 The full experiment completed 12 epochs in 7.52 hours:
 
 ```powershell
-C:\Users\alt_user\miniconda3\envs\torch-gpu\python.exe prototype.py train-hybrid-v42
+python prototype.py train-hybrid-v42
 ```
 
 Validation rollout latent MSE improved from `0.604` to `0.337`, 27.3% below

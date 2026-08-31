@@ -15,16 +15,16 @@
 ## Reproduction command
 
 ```powershell
-C:\Users\alt_user\miniconda3\envs\torch-gpu\python.exe prototype.py train-hybrid-v42
+python prototype.py train-hybrid-v42
 ```
 
 ## Configuration
 
 ```json
 {
-  "autoencoder_checkpoint": "D:\\Code_archive\\Bad_apple\\prototype_runs\\basic_full\\model_best.pt",
-  "frame_dir": "D:\\Code_archive\\Bad_apple\\prototype_data\\full_source_frames",
-  "run_dir": "D:\\Code_archive\\Bad_apple\\prototype_runs\\hybrid_v4_2_long_horizon",
+  "autoencoder_checkpoint": "C:\\Users\\cheeseburgerhere\\OneDrive\\Belgeler\\GitHub\\Neural-Network-Dreams-of-Bad-Apple\\prototype_runs\\basic_full\\model_best.pt",
+  "frame_dir": "C:\\Users\\cheeseburgerhere\\OneDrive\\Belgeler\\GitHub\\Neural-Network-Dreams-of-Bad-Apple\\prototype_data\\full_source_frames",
+  "run_dir": "C:\\Users\\cheeseburgerhere\\OneDrive\\Belgeler\\GitHub\\Neural-Network-Dreams-of-Bad-Apple\\prototype_runs\\hybrid_v4_2_long_horizon",
   "history_length": 16,
   "minimum_rollout_steps": 4,
   "rollout_steps": 32,
@@ -71,7 +71,7 @@ C:\Users\alt_user\miniconda3\envs\torch-gpu\python.exe prototype.py train-hybrid
   "burn_in_steps": 128,
   "freeze_memory_epochs": 6,
   "architecture_version": "v4.2",
-  "reproduction_command": "C:\\Users\\alt_user\\miniconda3\\envs\\torch-gpu\\python.exe prototype.py train-hybrid-v42",
+  "reproduction_command": "python prototype.py train-hybrid-v42",
   "seed": 7,
   "device": "auto",
   "anchor_initialization_indices": [
@@ -308,7 +308,7 @@ C:\Users\alt_user\miniconda3\envs\torch-gpu\python.exe prototype.py train-hybrid
 
 ## Checkpoint
 
-`D:\Code_archive\Bad_apple\prototype_runs\hybrid_v4_2_long_horizon\model_best.pt`
+`C:\Users\cheeseburgerhere\OneDrive\Belgeler\GitHub\Neural-Network-Dreams-of-Bad-Apple\prototype_runs\hybrid_v4_2_long_horizon\model_best.pt`
 
 ## Training history
 
