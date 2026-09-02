@@ -11,9 +11,8 @@
 <p><em>The 45–60 second prototype. Click it for the full-quality MP4.</em></p>
 
 <p>
-  <a href="blog_assets/videos/hero_45_60.mp4"><img alt="Watch the 15-second demo" src="https://img.shields.io/badge/WATCH-15_SECOND_DEMO-ef4444?style=for-the-badge&logo=youtube&logoColor=white"></a>
-  <a href="blog_assets/videos/hero_source_vs_220_full.mp4"><img alt="Watch the full rollout" src="https://img.shields.io/badge/WATCH-FULL_ROLLOUT-7c3aed?style=for-the-badge&logo=youtube&logoColor=white"></a>
-  <a href="https://cheeseburgerhere.github.io/cheeseburgerhere/bad-apple/"><img alt="Read the project story" src="https://img.shields.io/badge/READ-PROJECT_STORY-2563eb?style=for-the-badge&logo=markdown&logoColor=white"></a>
+  <a href="blog_assets/videos/hero_source_vs_220_full.mp4"><img alt="Watch the Full Video" src="https://img.shields.io/badge/WATCH-FULL_ROLLOUT-7c3aed?style=for-the-badge&logo=youtube&logoColor=white"></a>
+  <a href="https://cheeseburgerhere.github.io/cheeseburgerhere/bad-apple/"><img alt="Full Blog Post" src="https://img.shields.io/badge/READ-PROJECT_STORY-2563eb?style=for-the-badge&logo=markdown&logoColor=white"></a>
 </p>
 <!-- 
 <p>
