@@ -1,0 +1,7 @@
+model,batch_size,learning_rate,epochs,seed,burn_in_steps,rollout_steps,freeze_memory_epochs,checkpoint_epoch,polarity_handling
+0,16,0.0003,12,7,128,32,6,12,checkpoint native
+16,16,0.0003,12,7,128,32,6,12,checkpoint native
+32,16,0.0003,12,7,128,32,6,12,checkpoint native
+55,16,0.0003,12,7,128,32,6,12,checkpoint native
+110,16,0.0003,12,7,128,32,6,12,checkpoint native
+220,16,0.0003,12,7,128,32,6,12,separately calibrated 96-knot spline
